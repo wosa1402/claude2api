@@ -119,7 +119,7 @@ func AdminStatusHandler(c *gin.Context) {
 		// 状态分类（被动统计推断）：活跃 / 冷却 / 异常
 		switch {
 		case !a.Enabled:
-			a.Status = "异常"
+			a.Status = "禁用"
 		case a.CooldownUntil != "":
 			a.Status = "冷却"
 		case a.FailStreak >= 3:

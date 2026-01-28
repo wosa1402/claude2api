@@ -570,6 +570,7 @@
       }
 
       function statusBadge(a) {
+        if (!a.enabled || a.status === "禁用") return { cls: "warn", text: "禁用" };
         if (a.status === "冷却") return { cls: "warn", text: "冷却" };
         if (a.status === "异常") return { cls: "bad", text: "异常" };
         return { cls: "good", text: "活跃" };
@@ -578,6 +579,10 @@
       function render(data) {
         const g = data.global || {};
         const accounts = data.accounts || [];
+        const low = accounts.filter((a) => (a.pool || "low") === "low");
+        const high = accounts.filter((a) => (a.pool || "low") === "high");
+        const lowEnabled = low.filter((a) => a.enabled).length;
+        const highEnabled = high.filter((a) => a.enabled).length;
 
         $("kpiRate").textContent = fmtPct(g.successRate);
         $("kpiOk").textContent = fmtInt(g.ok);
@@ -586,12 +591,25 @@
         $("kpiLastAt").textContent = "最近：" + fmtTime(g.lastAt);
         $("kpiLastOk").textContent = "最近成功：" + fmtTime(g.lastOkAt);
         $("kpiLastErr").textContent = "最近错误：" + (g.lastError ? safeStr(g.lastError) : "--");
-        $("kpiEnabled").textContent = "启用：" + fmtInt(accounts.filter((a) => a.enabled).length);
+        $("kpiEnabled").textContent =
+          "启用：" +
+          fmtInt(accounts.filter((a) => a.enabled).length) +
+          `（low: ${lowEnabled}/${low.length}，high: ${highEnabled}/${high.length}）`;
 
         const wrap = $("accounts");
         wrap.innerHTML = "";
 
-        for (const a of accounts) {
+        function addGroup(title, list) {
+          const header = document.createElement("div");
+          header.style.cssText =
+            "padding:10px 6px 0;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;align-items:center";
+          const enabledCount = list.filter((x) => x.enabled).length;
+          header.innerHTML = `<span>${safeStr(title)}</span><span style="color:var(--muted2)">${enabledCount}/${list.length}</span>`;
+          wrap.appendChild(header);
+          for (const a of list) addAccountCard(a);
+        }
+
+        function addAccountCard(a) {
           const badge = statusBadge(a);
           const ok = a.ok || 0;
           const fail = a.fail || 0;
@@ -748,6 +766,9 @@
 
           wrap.appendChild(el);
         }
+
+        addGroup("低权重池（Claude 4）", low);
+        addGroup("正常权重池（4.5 / haiku）", high);
       }
 
       async function loadStatus() {
