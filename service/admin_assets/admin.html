@@ -168,13 +168,46 @@
 
       .accounts {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .pool-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
         gap: 14px;
       }
       @media (max-width: 900px) {
-        .accounts {
+        .pool-grid {
           grid-template-columns: 1fr;
         }
+      }
+      .pool-card {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(10px);
+        overflow: hidden;
+      }
+      .pool-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 14px 16px 10px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .pool-sub {
+        color: var(--muted2);
+        font-size: 12px;
+        margin-top: 4px;
+      }
+      .pool-body {
+        padding: 0 16px 16px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
       }
 
       .acc {
@@ -597,17 +630,39 @@
           `（low: ${lowEnabled}/${low.length}，high: ${highEnabled}/${high.length}）`;
 
         const wrap = $("accounts");
-        wrap.innerHTML = "";
+        wrap.innerHTML = `
+          <div class="pool-grid">
+            <div class="pool-card">
+              <div class="pool-head">
+                <div>
+                  <div>低权重池（Claude 4）</div>
+                  <div class="pool-sub">当请求模型为 Claude 4 时从此池轮询</div>
+                </div>
+                <div style="text-align:right">
+                  <div class="pool-sub" id="poolLowCount">--</div>
+                </div>
+              </div>
+              <div class="pool-body" id="poolLow"></div>
+            </div>
+            <div class="pool-card">
+              <div class="pool-head">
+                <div>
+                  <div>正常权重池（4.5 / haiku）</div>
+                  <div class="pool-sub">当请求模型为 4.5/haiku 时从此池轮询</div>
+                </div>
+                <div style="text-align:right">
+                  <div class="pool-sub" id="poolHighCount">--</div>
+                </div>
+              </div>
+              <div class="pool-body" id="poolHigh"></div>
+            </div>
+          </div>
+        `;
 
-        function addGroup(title, list) {
-          const header = document.createElement("div");
-          header.style.cssText =
-            "padding:10px 6px 0;color:var(--muted);font-size:13px;display:flex;justify-content:space-between;align-items:center";
-          const enabledCount = list.filter((x) => x.enabled).length;
-          header.innerHTML = `<span>${safeStr(title)}</span><span style="color:var(--muted2)">${enabledCount}/${list.length}</span>`;
-          wrap.appendChild(header);
-          for (const a of list) addAccountCard(a);
-        }
+        const lowWrap = $("poolLow");
+        const highWrap = $("poolHigh");
+        $("poolLowCount").textContent = `${lowEnabled}/${low.length}`;
+        $("poolHighCount").textContent = `${highEnabled}/${high.length}`;
 
         function addAccountCard(a) {
           const badge = statusBadge(a);
@@ -764,11 +819,12 @@
             }
           });
 
-          wrap.appendChild(el);
+          const target = (a.pool || "low") === "high" ? highWrap : lowWrap;
+          target.appendChild(el);
         }
 
-        addGroup("低权重池（Claude 4）", low);
-        addGroup("正常权重池（4.5 / haiku）", high);
+        for (const a of low) addAccountCard(a);
+        for (const a of high) addAccountCard(a);
       }
 
       async function loadStatus() {
