@@ -462,6 +462,28 @@
       .toast.show {
         display: block;
       }
+
+      .btn.loading {
+        pointer-events: none;
+        opacity: 0.6;
+      }
+      .btn.loading::after {
+        content: "";
+        width: 14px;
+        height: 14px;
+        border: 2px solid transparent;
+        border-top-color: currentColor;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        margin-left: 6px;
+      }
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+      .switch.loading {
+        pointer-events: none;
+        opacity: 0.5;
+      }
     </style>
   </head>
   <body>
@@ -599,6 +621,19 @@
         t.textContent = msg;
         t.classList.add("show");
         setTimeout(() => t.classList.remove("show"), 2200);
+      }
+
+      function setLoading(el, loading, text) {
+        if (!el) return;
+        if (loading) {
+          el.classList.add("loading");
+          el.disabled = true;
+          if (text) el.dataset.origText = el.textContent, el.textContent = text;
+        } else {
+          el.classList.remove("loading");
+          el.disabled = false;
+          if (el.dataset.origText) el.textContent = el.dataset.origText, delete el.dataset.origText;
+        }
       }
 
       function statusBadge(a) {
@@ -741,8 +776,10 @@
           if (sel) sel.value = (a.pool || "low");
 
           el.querySelector(".btnSavePool").addEventListener("click", async (ev) => {
-            const id = ev.currentTarget.getAttribute("data-id");
+            const btn = ev.currentTarget;
+            const id = btn.getAttribute("data-id");
             const pool = (el.querySelector(".poolSel")?.value || "low").trim();
+            setLoading(btn, true, "保存中…");
             try {
               const res = await fetch(`/admin/sessions/${id}/pool`, {
                 method: "POST",
@@ -760,11 +797,14 @@
               await loadStatus();
             } catch (e) {
               showToast("保存失败：" + e.message);
+            } finally {
+              setLoading(btn, false);
             }
           });
 
-          async function doClassify(apply) {
+          async function doClassify(apply, btn) {
             const id = a.id;
+            setLoading(btn, true, apply ? "识别中…" : "识别中…");
             try {
               const res = await fetch(`/admin/sessions/${id}/auto-classify`, {
                 method: "POST",
@@ -786,15 +826,19 @@
               await loadStatus();
             } catch (e) {
               showToast("识别失败：" + e.message);
+            } finally {
+              setLoading(btn, false);
             }
           }
 
-          el.querySelector(".btnClassify").addEventListener("click", () => doClassify(false));
-          el.querySelector(".btnClassifyApply").addEventListener("click", () => doClassify(true));
+          el.querySelector(".btnClassify").addEventListener("click", (ev) => doClassify(false, ev.currentTarget));
+          el.querySelector(".btnClassifyApply").addEventListener("click", (ev) => doClassify(true, ev.currentTarget));
 
           el.querySelector(".switch").addEventListener("click", async (ev) => {
-            const id = ev.currentTarget.getAttribute("data-id");
-            const enabled = !ev.currentTarget.classList.contains("on");
+            const sw = ev.currentTarget;
+            const id = sw.getAttribute("data-id");
+            const enabled = !sw.classList.contains("on");
+            sw.classList.add("loading");
             try {
               const res = await fetch(`/admin/sessions/${id}/toggle`, {
                 method: "POST",
@@ -815,6 +859,8 @@
               await loadStatus();
             } catch (e) {
               showToast("更新失败：" + e.message);
+            } finally {
+              sw.classList.remove("loading");
             }
           });
 
@@ -886,6 +932,7 @@
       });
 
       $("btnSubmit").addEventListener("click", async () => {
+        const btn = $("btnSubmit");
         const name = $("inName").value.trim();
         const account = $("inAccount").value.trim();
         const pool = ($("inPool").value || "").trim();
@@ -895,6 +942,7 @@
           showToast("sessionKey 不能为空");
           return;
         }
+        setLoading(btn, true, "保存中…");
         try {
           const res = await fetch("/admin/sessions", {
             method: "POST",
@@ -916,16 +964,22 @@
           await loadStatus();
         } catch (e) {
           showToast("添加失败：" + e.message);
+        } finally {
+          setLoading(btn, false);
         }
       });
 
       $("btnRefresh").addEventListener("click", async () => {
+        const btn = $("btnRefresh");
+        setLoading(btn, true, "刷新中…");
         try {
           await loadStatus();
           autoRefreshFailStreak = 0;
           showToast("已刷新");
         } catch (e) {
           showToast("刷新失败：" + e.message);
+        } finally {
+          setLoading(btn, false);
         }
       });
 
