@@ -34,6 +34,7 @@ type Config struct {
 	Address                string        `yaml:"address"`
 	APIKey                 string        `yaml:"apiKey"`
 	AdminKey               string        `yaml:"adminKey"`
+	AdminPasswordHash      string        `yaml:"adminPasswordHash"`
 	Proxy                  string        `yaml:"proxy"`
 	ChatDelete             bool          `yaml:"chatDelete"`
 	MaxChatHistoryLength   int           `yaml:"maxChatHistoryLength"`
@@ -183,6 +184,8 @@ func loadConfigFromEnv() *Config {
 		APIKey: os.Getenv("APIKEY"),
 		// 设置管理端口令（可选）
 		AdminKey: os.Getenv("ADMIN_KEY"),
+		// 管理后台密码哈希（可选）
+		AdminPasswordHash: os.Getenv("ADMIN_PASSWORD_HASH"),
 		// 设置代理地址
 		Proxy: os.Getenv("PROXY"),
 		// 自动删除聊天
@@ -241,6 +244,16 @@ func init() {
 		Mutex: sync.Mutex{},
 	}
 	ConfigInstance = LoadConfig()
+
+	// 支持用明文 ADMIN_PASSWORD 注入一次（不自动落盘）
+	if ConfigInstance.AdminPasswordHash == "" {
+		if pw := strings.TrimSpace(os.Getenv("ADMIN_PASSWORD")); pw != "" {
+			if hash, err := HashPassword(pw); err == nil {
+				ConfigInstance.AdminPasswordHash = hash
+			}
+		}
+	}
+
 	logger.Info("Loaded config:")
 	logger.Info(fmt.Sprintf("Max Retry count: %d", ConfigInstance.RetryCount))
 	for _, session := range ConfigInstance.Sessions {

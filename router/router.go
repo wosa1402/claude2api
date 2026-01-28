@@ -15,6 +15,11 @@ func SetupRoutes(r *gin.Engine) {
 
 	// Admin (simple dashboard)
 	r.GET("/admin", service.AdminPageHandler)
+	r.GET("/admin/login", service.AdminLoginPageHandler)
+	r.POST("/admin/login", service.AdminLoginHandler)
+	r.GET("/admin/setup", service.AdminSetupPageHandler)
+	r.POST("/admin/setup", service.AdminSetupHandler)
+	r.POST("/admin/logout", service.AdminLogoutHandler)
 	r.GET("/admin/status", service.AdminStatusHandler)
 	r.POST("/admin/sessions", service.AdminAddSessionHandler)
 	r.POST("/admin/sessions/:id/toggle", service.AdminToggleSessionHandler)

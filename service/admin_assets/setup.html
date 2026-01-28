@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>初始化设置</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --card: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --primary: #6aa8ff;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(900px 600px at 20% 0%, rgba(106, 168, 255, 0.25), transparent 60%),
+          radial-gradient(900px 600px at 80% 20%, rgba(131, 255, 198, 0.16), transparent 60%), var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        width: min(680px, 100%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+      .title {
+        font-size: 18px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 14px;
+        line-height: 1.5;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .field label {
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .field input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        outline: none;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+      .btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        border-radius: 12px;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      .btn.primary {
+        border-color: rgba(106, 168, 255, 0.45);
+        background: rgba(106, 168, 255, 0.18);
+      }
+      .toast {
+        margin-top: 10px;
+        color: #ffd08a;
+        font-size: 13px;
+        display: none;
+      }
+      .toast.show {
+        display: block;
+      }
+      code {
+        background: rgba(0, 0, 0, 0.25);
+        padding: 1px 6px;
+        border-radius: 8px;
+      }
+      @media (max-width: 720px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="title">初始化设置</div>
+      <div class="sub">
+        首次访问需要设置“管理后台密码”。若你尚未配置 APIKey，也可以在这里一并设置（对应请求头
+        <code>Authorization: Bearer &lt;APIKEY&gt;</code>）。
+      </div>
+
+      <div class="grid">
+        <div class="field" style="grid-column: 1 / -1">
+          <label>APIKey（如已在 env 里配置，可留空不修改）</label>
+          <input id="apiKey" placeholder="例如：qylzbclaude" />
+        </div>
+        <div class="field">
+          <label>管理后台密码</label>
+          <input id="pw1" type="password" placeholder="请输入密码" autocomplete="new-password" />
+        </div>
+        <div class="field">
+          <label>确认密码</label>
+          <input id="pw2" type="password" placeholder="再次输入密码" autocomplete="new-password" />
+        </div>
+      </div>
+
+      <div class="row">
+        <button class="btn" id="btnGo" type="button">返回首页</button>
+        <button class="btn primary" id="btnSave" type="button">保存并进入后台</button>
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      function show(msg) {
+        $("toast").textContent = msg;
+        $("toast").classList.add("show");
+      }
+      $("btnGo").addEventListener("click", () => (location.href = "/"));
+
+      $("btnSave").addEventListener("click", async () => {
+        const apiKey = $("apiKey").value.trim();
+        const adminPassword = $("pw1").value.trim();
+        const adminPassword2 = $("pw2").value.trim();
+        if (!adminPassword) return show("管理后台密码不能为空");
+        if (adminPassword !== adminPassword2) return show("两次输入的密码不一致");
+        try {
+          const res = await fetch("/admin/setup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ apiKey, adminPassword, adminPassword2 }),
+          });
+          let body = null;
+          try {
+            body = await res.json();
+          } catch (_) {}
+          if (!res.ok) throw new Error((body && body.error) || "HTTP " + res.status);
+          location.href = "/admin";
+        } catch (e) {
+          show("保存失败：" + e.message);
+        }
+      });
+    </script>
+  </body>
+</html>
+
