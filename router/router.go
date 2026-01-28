@@ -22,7 +22,9 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/admin/logout", service.AdminLogoutHandler)
 	r.GET("/admin/status", service.AdminStatusHandler)
 	r.POST("/admin/sessions", service.AdminAddSessionHandler)
+	r.POST("/admin/sessions/:id/pool", service.AdminSetSessionPoolHandler)
 	r.POST("/admin/sessions/:id/toggle", service.AdminToggleSessionHandler)
+	r.POST("/admin/sessions/:id/auto-classify", service.AdminAutoClassifySessionHandler)
 
 	// Health check endpoint
 	r.GET("/health", service.HealthCheckHandler)

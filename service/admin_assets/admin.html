@@ -93,6 +93,21 @@
       .btn:hover {
         background: rgba(255, 255, 255, 0.09);
       }
+      .btn.sm {
+        padding: 6px 10px;
+        font-size: 12px;
+        border-radius: 10px;
+      }
+      .btn.primary {
+        border-color: rgba(106, 168, 255, 0.45);
+        background: rgba(106, 168, 255, 0.18);
+      }
+      .btn.primary:hover {
+        background: rgba(106, 168, 255, 0.22);
+      }
+      .btn.ghost {
+        background: rgba(255, 255, 255, 0.04);
+      }
 
       .grid {
         display: grid;
@@ -487,6 +502,24 @@
             <label>账号（可选）</label>
             <input id="inAccount" placeholder="例如：xxx@gmail.com" />
           </div>
+          <div class="field">
+            <label>账号池（必选）</label>
+            <select
+              id="inPool"
+              style="
+                width: 100%;
+                padding: 10px 10px;
+                border-radius: 12px;
+                border: 1px solid var(--border);
+                background: rgba(255, 255, 255, 0.06);
+                color: var(--text);
+                outline: none;
+              "
+            >
+              <option value="low">低权重池（用于 Claude 4）</option>
+              <option value="high">正常权重池（用于 4.5 / haiku）</option>
+            </select>
+          </div>
           <div class="field" style="grid-column: 1 / -1">
             <label>sessionKey（必填）</label>
             <textarea id="inSession" placeholder="sk-ant-sid01-..."></textarea>
@@ -537,9 +570,9 @@
       }
 
       function statusBadge(a) {
-        if (!a.enabled) return { cls: "warn", text: "禁用" };
-        if (a.lastError) return { cls: "bad", text: "异常" };
-        return { cls: "good", text: "正常" };
+        if (a.status === "冷却") return { cls: "warn", text: "冷却" };
+        if (a.status === "异常") return { cls: "bad", text: "异常" };
+        return { cls: "good", text: "活跃" };
       }
 
       function render(data) {
@@ -582,8 +615,17 @@
                 <div class="acc-meta">
                   <span>Key：${safeStr(a.maskedKey || "")}</span>
                   <span>账号：${safeStr(a.account || "未填写")}</span>
+                  <span>池：${safeStr(a.pool || "low")}</span>
                   <span>最近：${fmtTime(a.lastAt)}</span>
+                  <span>连续失败：${fmtInt(a.failStreak || 0)}</span>
                   <span>错误：${a.lastError ? safeStr(a.lastError) : "无"}</span>
+                  <span>${a.cooldownUntil ? ("恢复：" + fmtTime(a.cooldownUntil)) : ""}</span>
+                  <span>
+                    识别：${a.classifyReportedModel ? safeStr(a.classifyReportedModel) : "--"}
+                    ${a.classifySuggestedPool ? ("→建议池：" + safeStr(a.classifySuggestedPool)) : ""}
+                    ${a.classifyLastAt ? ("（" + fmtTime(a.classifyLastAt) + "）") : ""}
+                    ${a.classifyError ? ("｜" + safeStr(a.classifyError)) : ""}
+                  </span>
                 </div>
               </div>
               <span class="badge ${badge.cls}">
@@ -603,7 +645,16 @@
               <span class="pill" style="padding: 6px 10px">${(rate * 100).toFixed(1)}%</span>
             </div>
 
-            <div style="display:flex;justify-content:flex-end">
+            <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <select class="poolSel" data-id="${a.id}" style="padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.06); color: var(--text)">
+                  <option value="low">low（Claude 4）</option>
+                  <option value="high">high（4.5/haiku）</option>
+                </select>
+                <button class="btn sm ghost btnSavePool" data-id="${a.id}" type="button">保存池</button>
+                <button class="btn sm primary btnClassify" data-id="${a.id}" type="button">自动识别</button>
+                <button class="btn sm btnClassifyApply" data-id="${a.id}" type="button">识别并应用</button>
+              </div>
               <label class="toggle">
                 <span>启用</span>
                 <span class="switch ${a.enabled ? "on" : ""}" data-id="${a.id}">
@@ -612,6 +663,62 @@
               </label>
             </div>
           `;
+
+          // pool selector default
+          const sel = el.querySelector(".poolSel");
+          if (sel) sel.value = (a.pool || "low");
+
+          el.querySelector(".btnSavePool").addEventListener("click", async (ev) => {
+            const id = ev.currentTarget.getAttribute("data-id");
+            const pool = (el.querySelector(".poolSel")?.value || "low").trim();
+            try {
+              const res = await fetch(`/admin/sessions/${id}/pool`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ pool }),
+              });
+              if (res.status === 401) return (location.href = "/admin/login");
+              if (res.status === 403) return (location.href = "/admin/setup");
+              let body = null;
+              try {
+                body = await res.json();
+              } catch (_) {}
+              if (!res.ok) throw new Error((body && body.error) ? body.error : "HTTP " + res.status);
+              showToast(body && body.savedPath ? ("已保存到 " + body.savedPath) : "已保存");
+              await loadStatus();
+            } catch (e) {
+              showToast("保存失败：" + e.message);
+            }
+          });
+
+          async function doClassify(apply) {
+            const id = a.id;
+            try {
+              const res = await fetch(`/admin/sessions/${id}/auto-classify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ apply: !!apply }),
+              });
+              if (res.status === 401) return (location.href = "/admin/login");
+              if (res.status === 403) return (location.href = "/admin/setup");
+              let body = null;
+              try {
+                body = await res.json();
+              } catch (_) {}
+              if (!res.ok) throw new Error((body && body.error) ? body.error : "HTTP " + res.status);
+              if (body && body.ok) {
+                showToast(`识别：${body.reportedModel}，建议池：${body.suggestedPool}`);
+              } else {
+                showToast("识别完成，但未成功：" + ((body && body.error) || "未知错误"));
+              }
+              await loadStatus();
+            } catch (e) {
+              showToast("识别失败：" + e.message);
+            }
+          }
+
+          el.querySelector(".btnClassify").addEventListener("click", () => doClassify(false));
+          el.querySelector(".btnClassifyApply").addEventListener("click", () => doClassify(true));
 
           el.querySelector(".switch").addEventListener("click", async (ev) => {
             const id = ev.currentTarget.getAttribute("data-id");
@@ -691,6 +798,7 @@
         $("modal").classList.remove("show");
         $("inName").value = "";
         $("inAccount").value = "";
+        $("inPool").value = "low";
         $("inSession").value = "";
         $("inOrg").value = "";
       }
@@ -704,6 +812,7 @@
       $("btnSubmit").addEventListener("click", async () => {
         const name = $("inName").value.trim();
         const account = $("inAccount").value.trim();
+        const pool = ($("inPool").value || "").trim();
         const sessionKey = $("inSession").value.trim();
         const orgID = $("inOrg").value.trim();
         if (!sessionKey) {
@@ -714,7 +823,7 @@
           const res = await fetch("/admin/sessions", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, account, sessionKey, orgID }),
+            body: JSON.stringify({ name, account, pool, sessionKey, orgID }),
           });
           if (res.status === 401) return (location.href = "/admin/login");
           if (res.status === 403) return (location.href = "/admin/setup");

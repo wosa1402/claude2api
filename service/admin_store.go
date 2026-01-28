@@ -2,6 +2,8 @@ package service
 
 import (
 	"claude2api/config"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -48,11 +50,13 @@ func (w recentWindow) snapshot() []interface{} {
 }
 
 type accountStat struct {
-	OK        int
-	Fail      int
-	Recent    recentWindow
-	LastAt    time.Time
-	LastError string
+	OK            int
+	Fail          int
+	FailStreak    int
+	CooldownUntil time.Time
+	Recent        recentWindow
+	LastAt        time.Time
+	LastError     string
 }
 
 type globalStat struct {
@@ -66,6 +70,15 @@ type globalStat struct {
 var statsMu sync.Mutex
 var perSession = map[string]*accountStat{}
 var global = globalStat{}
+
+func cooldownDuration() time.Duration {
+	// 默认 60 分钟，可通过 COOLDOWN_MINUTES 覆盖
+	minutes, err := strconv.Atoi(os.Getenv("COOLDOWN_MINUTES"))
+	if err != nil || minutes <= 0 {
+		minutes = 60
+	}
+	return time.Duration(minutes) * time.Minute
+}
 
 func maskKey(s string) string {
 	if s == "" {
@@ -97,10 +110,16 @@ func recordAttempt(session config.SessionInfo, ok bool, errType string) {
 	if ok {
 		s.OK++
 		s.LastError = ""
+		s.FailStreak = 0
+		s.CooldownUntil = time.Time{}
 		s.Recent.push(true)
 	} else {
 		s.Fail++
 		s.LastError = errType
+		s.FailStreak++
+		if errType == "429" {
+			s.CooldownUntil = now.Add(cooldownDuration())
+		}
 		s.Recent.push(false)
 	}
 

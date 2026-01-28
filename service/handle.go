@@ -27,11 +27,9 @@ func HealthCheckHandler(c *gin.Context) {
 
 func MoudlesHandler(c *gin.Context) {
 	models := []map[string]interface{}{
-		{"id": "claude-3-7-sonnet-20250219"},
 		{"id": "claude-sonnet-4-20250514"},
 		{"id": "claude-sonnet-4-5-20250929"},
 		{"id": "claude-haiku-4-5-20251001"},
-		{"id": "claude-opus-4-20250514"},
 	}
 
 	extendedModels := make([]map[string]interface{}, 0, len(models)*2)
@@ -74,19 +72,54 @@ func ChatCompletionsHandler(c *gin.Context) {
 
 	// Get model or use default
 	model := getModelOrDefault(req.Model)
-	index := config.Sr.NextIndex()
-	// Attempt with retry mechanism
-	for i := 0; i < config.ConfigInstance.RetryCount; i++ {
-		index = (index + 1) % len(config.ConfigInstance.Sessions)
-		session, err := config.ConfigInstance.GetSessionForModel(index)
-		if err != nil {
-			logger.Error(fmt.Sprintf("Failed to get session for model %s: %v", model, err))
-			logger.Info("Retrying another session")
+
+	// 根据模型选择 session 池：
+	// - Claude 4（sonnet-4-20250514）优先走低权重池（low）
+	// - 4.5/haiku 走正常权重池（high）
+	baseModel := strings.TrimSuffix(model, "-think")
+	wantPool := "high"
+	if baseModel == "claude-sonnet-4-20250514" {
+		wantPool = "low"
+	}
+
+	// 构建候选 session 列表（按 pool + enabled 过滤）
+	config.ConfigInstance.RwMutx.RLock()
+	candidates := make([]config.SessionInfo, 0, len(config.ConfigInstance.Sessions))
+	for _, s := range config.ConfigInstance.Sessions {
+		if !s.Enabled {
 			continue
 		}
-		if !session.Enabled {
-			continue
+		pool := strings.TrimSpace(s.Pool)
+		if pool == "" {
+			pool = "low"
 		}
+		if pool == wantPool {
+			candidates = append(candidates, s)
+		}
+	}
+	retryCount := config.ConfigInstance.RetryCount
+	config.ConfigInstance.RwMutx.RUnlock()
+
+	if len(candidates) == 0 {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{
+			Error: fmt.Sprintf("无可用账号：pool=%s（请在 /admin 为 session 设置 pool）", wantPool),
+		})
+		return
+	}
+
+	sr := config.SrHigh
+	if wantPool == "low" {
+		sr = config.SrLow
+	}
+	start := sr.NextIndex(len(candidates))
+
+	// Attempt with retry mechanism（优先用配置的 retryCount，但不超过候选数量）
+	maxTry := retryCount
+	if maxTry <= 0 || maxTry > len(candidates) {
+		maxTry = len(candidates)
+	}
+	for i := 0; i < maxTry; i++ {
+		session := candidates[(start+i)%len(candidates)]
 
 		logger.Info(fmt.Sprintf("Using session for model %s: %s", model, session.SessionKey))
 		if i > 0 {

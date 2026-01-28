@@ -231,6 +231,63 @@ func (c *Client) SendMessage(conversationID string, message string, stream bool,
 	return 200, c.HandleResponse(resp.Body, stream, gc)
 }
 
+// SendMessageExtractText 发送消息并从 SSE 中提取纯文本（用于管理后台的低频探测/分类）
+func (c *Client) SendMessageExtractText(conversationID string, message string) (int, string, error) {
+	if c.orgID == "" {
+		return 500, "", errors.New("organization ID not set")
+	}
+	url := fmt.Sprintf("https://claude.ai/api/organizations/%s/chat_conversations/%s/completion",
+		c.orgID, conversationID)
+
+	requestBody := c.defaultAttrs
+	requestBody["prompt"] = message
+	if c.model != "claude-sonnet-4-20250514" {
+		requestBody["model"] = c.model
+	}
+
+	resp, err := c.client.R().DisableAutoReadResponse().
+		SetHeader("referer", fmt.Sprintf("https://claude.ai/chat/%s", conversationID)).
+		SetHeader("accept", "text/event-stream, text/event-stream").
+		SetHeader("anthropic-client-platform", "web_claude_ai").
+		SetHeader("cache-control", "no-cache").
+		SetBody(requestBody).
+		Post(url)
+	if err != nil {
+		return 500, "", fmt.Errorf("request failed: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return http.StatusTooManyRequests, "", fmt.Errorf("rate limit exceeded")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return resp.StatusCode, "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var sb strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := line[6:]
+		var event ResponseEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		if event.Type == "error" && event.Error.Message != "" {
+			return http.StatusOK, sb.String(), errors.New(event.Error.Message)
+		}
+		if event.Delta.Text != "" {
+			sb.WriteString(event.Delta.Text)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return http.StatusOK, sb.String(), err
+	}
+	return http.StatusOK, sb.String(), nil
+}
+
 // HandleResponse converts Claude's SSE format to OpenAI format and writes to the response writer
 func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context) error {
 	defer body.Close()

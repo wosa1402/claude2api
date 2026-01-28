@@ -12,6 +12,7 @@ func classifyErr(err error) string {
 	}
 
 	msg := err.Error()
+	lower := strings.ToLower(msg)
 
 	// 常见 HTTP 状态码（来自 core/api.go 的 error 文案）
 	for _, code := range []string{"401", "403", "404", "429", "500", "502", "503"} {
@@ -39,6 +40,9 @@ func classifyErr(err error) string {
 	}
 	if strings.Contains(strings.ToLower(msg), "tls") || strings.Contains(strings.ToLower(msg), "x509") {
 		return "tls"
+	}
+	if strings.Contains(lower, "rate limit") || strings.Contains(lower, "too many requests") {
+		return "429"
 	}
 	return "unknown"
 }

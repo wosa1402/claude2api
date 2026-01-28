@@ -22,6 +22,15 @@ type SessionInfo struct {
 	Name    string `yaml:"name"`
 	Account string `yaml:"account"`
 	Enabled bool   `yaml:"enabled"`
+	// session 池：low=低权重（主要用于 Claude 4），high=正常权重（用于 4.5/haiku）
+	Pool string `yaml:"pool"`
+	// 自动分类记录（用于手动审核）
+	ClassifyLastAt        string `yaml:"classifyLastAt"`
+	ClassifyAskedModel    string `yaml:"classifyAskedModel"`
+	ClassifyReportedModel string `yaml:"classifyReportedModel"`
+	ClassifySuggestedPool string `yaml:"classifySuggestedPool"`
+	ClassifyRaw           string `yaml:"classifyRaw"`
+	ClassifyError         string `yaml:"classifyError"`
 }
 
 type SessionRagen struct {
@@ -63,6 +72,7 @@ func parseSessionEnv(envValue string) (int, []SessionInfo) {
 		session := SessionInfo{
 			SessionKey: parts[0],
 			Enabled:    true,
+			Pool:       "low",
 		}
 
 		if len(parts) > 1 {
@@ -100,14 +110,10 @@ func (c *Config) SetSessionOrgID(sessionKey, orgID string) {
 		}
 	}
 }
-func (sr *SessionRagen) NextIndex() int {
+func (sr *SessionRagen) NextIndex(n int) int {
 	sr.Mutex.Lock()
 	defer sr.Mutex.Unlock()
 
-	ConfigInstance.RwMutx.RLock()
-	defer ConfigInstance.RwMutx.RUnlock()
-
-	n := len(ConfigInstance.Sessions)
 	if n <= 0 {
 		sr.Index = 0
 		return 0
@@ -232,18 +238,39 @@ func LoadConfig() *Config {
 	return loadConfigFromEnv()
 }
 
+func normalizeSessionDefaults(c *Config) {
+	if c == nil {
+		return
+	}
+	c.RwMutx.Lock()
+	defer c.RwMutx.Unlock()
+	for i := range c.Sessions {
+		if strings.TrimSpace(c.Sessions[i].Pool) == "" {
+			c.Sessions[i].Pool = "low"
+		}
+		// 兼容旧配置：enabled 未填时默认启用（仅当 sessionKey 存在且 enabled 仍为 false）
+		// 注意：如果用户明确在 YAML 里写 enabled: false，这里不会区分；因此不在这里强制改写 enabled。
+	}
+}
+
 var ConfigInstance *Config
-var Sr *SessionRagen
+var SrLow *SessionRagen
+var SrHigh *SessionRagen
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
 	// 加载环境变量
 	_ = godotenv.Load()
-	Sr = &SessionRagen{
+	SrLow = &SessionRagen{
+		Index: 0,
+		Mutex: sync.Mutex{},
+	}
+	SrHigh = &SessionRagen{
 		Index: 0,
 		Mutex: sync.Mutex{},
 	}
 	ConfigInstance = LoadConfig()
+	normalizeSessionDefaults(ConfigInstance)
 
 	// 支持用明文 ADMIN_PASSWORD 注入一次（不自动落盘）
 	if ConfigInstance.AdminPasswordHash == "" {
