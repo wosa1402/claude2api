@@ -29,6 +29,8 @@ func MoudlesHandler(c *gin.Context) {
 	models := []map[string]interface{}{
 		{"id": "claude-3-7-sonnet-20250219"},
 		{"id": "claude-sonnet-4-20250514"},
+		{"id": "claude-sonnet-4-5-20250929"},
+		{"id": "claude-haiku-4-5-20251001"},
 		{"id": "claude-opus-4-20250514"},
 	}
 
@@ -82,6 +84,9 @@ func ChatCompletionsHandler(c *gin.Context) {
 			logger.Info("Retrying another session")
 			continue
 		}
+		if !session.Enabled {
+			continue
+		}
 
 		logger.Info(fmt.Sprintf("Using session for model %s: %s", model, session.SessionKey))
 		if i > 0 {
@@ -89,7 +94,9 @@ func ChatCompletionsHandler(c *gin.Context) {
 			processor.Prompt.WriteString(processor.RootPrompt.String())
 		}
 		// Initialize client and process request
-		if handleChatRequest(c, session, model, processor, req.Stream) {
+		ok, errType := handleChatRequest(c, session, model, processor, req.Stream)
+		recordAttempt(session, ok, errType)
+		if ok {
 			return // Success, exit the retry loop
 		}
 
@@ -136,7 +143,9 @@ func MirrorChatHandler(c *gin.Context) {
 	}
 
 	// Process the request with the provided session
-	if !handleChatRequest(c, session, model, processor, req.Stream) {
+	ok, errType := handleChatRequest(c, session, model, processor, req.Stream)
+	recordAttempt(session, ok, errType)
+	if !ok {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "Failed to process request",
 		})
@@ -178,18 +187,18 @@ func extractSessionFromAuthHeader(c *gin.Context) (config.SessionInfo, error) {
 	authInfo = strings.TrimPrefix(authInfo, "Bearer ")
 
 	if authInfo == "" {
-		return config.SessionInfo{SessionKey: "", OrgID: ""}, fmt.Errorf("missing authorization header")
+		return config.SessionInfo{SessionKey: "", OrgID: "", Enabled: true}, fmt.Errorf("missing authorization header")
 	}
 
 	if strings.Contains(authInfo, ":") {
 		parts := strings.Split(authInfo, ":")
-		return config.SessionInfo{SessionKey: parts[0], OrgID: parts[1]}, nil
+		return config.SessionInfo{SessionKey: parts[0], OrgID: parts[1], Enabled: true}, nil
 	}
 
-	return config.SessionInfo{SessionKey: authInfo, OrgID: ""}, nil
+	return config.SessionInfo{SessionKey: authInfo, OrgID: "", Enabled: true}, nil
 }
 
-func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) bool {
+func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string) {
 	// Initialize the Claude client
 	claudeClient := core.NewClient(session.SessionKey, config.ConfigInstance.Proxy, model)
 
@@ -198,7 +207,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		orgId, err := claudeClient.GetOrgID()
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to get org ID: %v", err))
-			return false
+			return false, classifyErr(err)
 		}
 		session.OrgID = orgId
 		config.ConfigInstance.SetSessionOrgID(session.SessionKey, session.OrgID)
@@ -211,7 +220,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		err := claudeClient.UploadFile(processor.ImgDataList)
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to upload file: %v", err))
-			return false
+			return false, classifyErr(err)
 		}
 	}
 
@@ -226,14 +235,14 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 	conversationID, err := claudeClient.CreateConversation()
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to create conversation: %v", err))
-		return false
+		return false, classifyErr(err)
 	}
 
 	// Send message
 	if _, err := claudeClient.SendMessage(conversationID, processor.Prompt.String(), stream, c); err != nil {
 		logger.Error(fmt.Sprintf("Failed to send message: %v", err))
 		go cleanupConversation(claudeClient, conversationID, 3)
-		return false
+		return false, classifyErr(err)
 	}
 
 	// Clean up conversation if enabled
@@ -241,7 +250,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		go cleanupConversation(claudeClient, conversationID, 3)
 	}
 
-	return true
+	return true, ""
 }
 
 func cleanupConversation(client *core.Client, conversationID string, retry int) {

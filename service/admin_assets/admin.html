@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claude2API 控制台（简化版）</title>
+    <style>
+      :root {
+        --bg0: #070a12;
+        --border: rgba(255, 255, 255, 0.1);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --muted2: rgba(255, 255, 255, 0.45);
+        --good: #22c55e;
+        --bad: #ef4444;
+        --warn: #f59e0b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Helvetica Neue", Arial;
+        background: radial-gradient(1000px 600px at 25% 20%, rgba(59, 130, 246, 0.18), transparent 60%),
+          radial-gradient(900px 500px at 70% 30%, rgba(168, 85, 247, 0.14), transparent 60%),
+          radial-gradient(1100px 700px at 40% 90%, rgba(34, 197, 94, 0.1), transparent 55%), var(--bg0);
+      }
+
+      .container {
+        max-width: 1100px;
+        margin: 28px auto;
+        padding: 0 16px 28px;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
+        border-radius: 14px;
+        backdrop-filter: blur(10px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .logo {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: conic-gradient(from 180deg, #7c3aed, #2563eb, #22c55e, #f59e0b, #ef4444, #7c3aed);
+      }
+      .title {
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        font-size: 12px;
+        color: var(--muted2);
+        margin-top: 2px;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        padding: 8px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn:hover {
+        background: rgba(255, 255, 255, 0.09);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(10px);
+      }
+      .card h2 {
+        margin: 0;
+        padding: 14px 16px 10px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .card .content {
+        padding: 0 16px 16px;
+      }
+
+      .kpi-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+      }
+      @media (max-width: 900px) {
+        .kpi-row {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .kpi {
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 14px;
+        padding: 12px;
+      }
+      .kpi .label {
+        color: var(--muted2);
+        font-size: 12px;
+      }
+      .kpi .value {
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 6px;
+      }
+      .kpi .hint {
+        color: var(--muted2);
+        font-size: 12px;
+        margin-top: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .accounts {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+      }
+      @media (max-width: 900px) {
+        .accounts {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .acc {
+        padding: 14px 14px 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .acc-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .acc-title {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .acc-name {
+        font-weight: 700;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .acc-meta {
+        color: var(--muted2);
+        font-size: 12px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+        font-size: 12px;
+        flex: 0 0 auto;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 99px;
+        background: var(--muted2);
+      }
+      .badge.good {
+        border-color: rgba(34, 197, 94, 0.35);
+        background: rgba(34, 197, 94, 0.12);
+        color: rgba(209, 250, 229, 0.9);
+      }
+      .badge.good .dot {
+        background: var(--good);
+      }
+      .badge.bad {
+        border-color: rgba(239, 68, 68, 0.35);
+        background: rgba(239, 68, 68, 0.12);
+        color: rgba(254, 226, 226, 0.9);
+      }
+      .badge.bad .dot {
+        background: var(--bad);
+      }
+      .badge.warn {
+        border-color: rgba(245, 158, 11, 0.35);
+        background: rgba(245, 158, 11, 0.12);
+        color: rgba(255, 237, 213, 0.92);
+      }
+      .badge.warn .dot {
+        background: var(--warn);
+      }
+
+      .pills {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.18);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .pill strong {
+        color: var(--text);
+        font-weight: 800;
+      }
+      .pill.ok strong {
+        color: rgba(209, 250, 229, 0.95);
+      }
+      .pill.fail strong {
+        color: rgba(254, 226, 226, 0.95);
+      }
+      .pill.rate {
+        background: rgba(245, 158, 11, 0.1);
+        border-color: rgba(245, 158, 11, 0.3);
+      }
+
+      .spark {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .sparkline {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 10px;
+        gap: 4px;
+        align-items: center;
+        min-height: 14px;
+      }
+      .sq {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.1);
+      }
+      .sq.ok {
+        background: rgba(34, 197, 94, 0.9);
+        border-color: rgba(34, 197, 94, 0.55);
+      }
+      .sq.fail {
+        background: rgba(239, 68, 68, 0.9);
+        border-color: rgba(239, 68, 68, 0.55);
+      }
+      .sq.none {
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 13px;
+        user-select: none;
+      }
+      .switch {
+        width: 44px;
+        height: 24px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid var(--border);
+        position: relative;
+        cursor: pointer;
+      }
+      .knob {
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.88);
+        position: absolute;
+        top: 1px;
+        left: 1px;
+        transition: left 160ms ease;
+      }
+      .switch.on {
+        background: rgba(34, 197, 94, 0.2);
+        border-color: rgba(34, 197, 94, 0.35);
+      }
+      .switch.on .knob {
+        left: 21px;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .modal.show {
+        display: flex;
+      }
+      .dialog {
+        width: min(720px, 100%);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(10, 14, 24, 0.96);
+        backdrop-filter: blur(12px);
+        padding: 14px;
+      }
+      .dialog h3 {
+        margin: 6px 4px 10px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      @media (max-width: 760px) {
+        .form {
+          grid-template-columns: 1fr;
+        }
+      }
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+      .field label {
+        font-size: 12px;
+        color: var(--muted2);
+      }
+      .field input,
+      .field textarea {
+        width: 100%;
+        padding: 10px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        outline: none;
+      }
+      .field textarea {
+        min-height: 78px;
+        resize: vertical;
+        grid-column: 1 / -1;
+      }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .toast {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.55);
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        border-radius: 12px;
+        color: var(--text);
+        font-size: 13px;
+        display: none;
+      }
+      .toast.show {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="brand">
+          <div class="logo" aria-hidden="true"></div>
+          <div>
+            <div class="title">Claude2API 控制台（简化版）</div>
+            <div class="sub">账号状态 · 调用统计 · 账号备注/添加</div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="btnAdd" type="button">添加 Session</button>
+          <button class="btn" id="btnRefresh" type="button">立即刷新</button>
+          <label class="btn" style="display: inline-flex; align-items: center; gap: 8px; user-select: none">
+            <input id="autoRefresh" type="checkbox" style="accent-color: #6aa8ff" />
+            自动刷新（30 秒）
+          </label>
+        </div>
+      </header>
+
+      <div class="grid">
+        <section class="card">
+          <h2>全局概览</h2>
+          <div class="content">
+            <div class="kpi-row">
+              <div class="kpi">
+                <div class="label">成功率</div>
+                <div class="value" id="kpiRate">--</div>
+                <div class="hint" id="kpiLastAt">最近：--</div>
+              </div>
+              <div class="kpi">
+                <div class="label">成功</div>
+                <div class="value" id="kpiOk">--</div>
+                <div class="hint" id="kpiLastOk">最近成功：--</div>
+              </div>
+              <div class="kpi">
+                <div class="label">失败</div>
+                <div class="value" id="kpiFail">--</div>
+                <div class="hint" id="kpiLastErr">最近错误：--</div>
+              </div>
+              <div class="kpi">
+                <div class="label">账号数</div>
+                <div class="value" id="kpiAccounts">--</div>
+                <div class="hint" id="kpiEnabled">启用：--</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>账号列表</h2>
+          <div class="content">
+            <div class="accounts" id="accounts"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="modal" id="modal">
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+        <h3 id="dlgTitle">添加 Session</h3>
+        <div class="form">
+          <div class="field">
+            <label>名称（可选）</label>
+            <input id="inName" placeholder="例如：主号/备用号" />
+          </div>
+          <div class="field">
+            <label>账号（可选）</label>
+            <input id="inAccount" placeholder="例如：xxx@gmail.com" />
+          </div>
+          <div class="field" style="grid-column: 1 / -1">
+            <label>sessionKey（必填）</label>
+            <textarea id="inSession" placeholder="sk-ant-sid01-..."></textarea>
+          </div>
+          <div class="field">
+            <label>OrgID（可选）</label>
+            <input id="inOrg" placeholder="留空可自动获取" />
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn" id="btnCancel" type="button">取消</button>
+          <button class="btn" id="btnSubmit" type="button">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const AUTO_REFRESH_LS_KEY = "claude2api_admin_autorefresh_v1";
+      let autoRefreshTimer = null;
+      let autoRefreshFailStreak = 0;
+
+      function fmtPct(x) {
+        if (typeof x !== "number" || Number.isNaN(x)) return "--";
+        return (x * 100).toFixed(1) + "%";
+      }
+      function fmtInt(x) {
+        if (typeof x !== "number" || Number.isNaN(x)) return "--";
+        return String(x);
+      }
+      function fmtTime(iso) {
+        if (!iso) return "--";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "--";
+        return d.toLocaleString();
+      }
+      function safeStr(s) {
+        return (s == null ? "" : String(s)).slice(0, 120);
+      }
+
+      function showToast(msg) {
+        const t = $("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2200);
+      }
+
+      function statusBadge(a) {
+        if (!a.enabled) return { cls: "warn", text: "禁用" };
+        if (a.lastError) return { cls: "bad", text: "异常" };
+        return { cls: "good", text: "正常" };
+      }
+
+      function render(data) {
+        const g = data.global || {};
+        const accounts = data.accounts || [];
+
+        $("kpiRate").textContent = fmtPct(g.successRate);
+        $("kpiOk").textContent = fmtInt(g.ok);
+        $("kpiFail").textContent = fmtInt(g.fail);
+        $("kpiAccounts").textContent = fmtInt(accounts.length);
+        $("kpiLastAt").textContent = "最近：" + fmtTime(g.lastAt);
+        $("kpiLastOk").textContent = "最近成功：" + fmtTime(g.lastOkAt);
+        $("kpiLastErr").textContent = "最近错误：" + (g.lastError ? safeStr(g.lastError) : "--");
+        $("kpiEnabled").textContent = "启用：" + fmtInt(accounts.filter((a) => a.enabled).length);
+
+        const wrap = $("accounts");
+        wrap.innerHTML = "";
+
+        for (const a of accounts) {
+          const badge = statusBadge(a);
+          const ok = a.ok || 0;
+          const fail = a.fail || 0;
+          const rate = a.successRate ?? ((ok + fail) > 0 ? ok / (ok + fail) : 0);
+          const recent = Array.isArray(a.recent) ? a.recent : [];
+
+          const squares = [];
+          for (let i = 0; i < 30; i++) {
+            const v = recent[i];
+            if (v === true) squares.push(`<span class="sq ok" title="成功"></span>`);
+            else if (v === false) squares.push(`<span class="sq fail" title="失败"></span>`);
+            else squares.push(`<span class="sq none" title="无数据"></span>`);
+          }
+
+          const el = document.createElement("div");
+          el.className = "card acc";
+          el.innerHTML = `
+            <div class="acc-top">
+              <div class="acc-title">
+                <div class="acc-name">${safeStr(a.name || a.account || a.maskedKey || "sk-****")}</div>
+                <div class="acc-meta">
+                  <span>Key：${safeStr(a.maskedKey || "")}</span>
+                  <span>账号：${safeStr(a.account || "未填写")}</span>
+                  <span>最近：${fmtTime(a.lastAt)}</span>
+                  <span>错误：${a.lastError ? safeStr(a.lastError) : "无"}</span>
+                </div>
+              </div>
+              <span class="badge ${badge.cls}">
+                <span class="dot"></span>
+                <span>${badge.text}</span>
+              </span>
+            </div>
+
+            <div class="pills">
+              <span class="pill ok">成功：<strong>${ok}</strong></span>
+              <span class="pill fail">失败：<strong>${fail}</strong></span>
+              <span class="pill rate">成功率：<strong>${(rate * 100).toFixed(1)}%</strong></span>
+            </div>
+
+            <div class="spark">
+              <div class="sparkline" aria-label="最近调用记录">${squares.join("")}</div>
+              <span class="pill" style="padding: 6px 10px">${(rate * 100).toFixed(1)}%</span>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end">
+              <label class="toggle">
+                <span>启用</span>
+                <span class="switch ${a.enabled ? "on" : ""}" data-id="${a.id}">
+                  <span class="knob"></span>
+                </span>
+              </label>
+            </div>
+          `;
+
+          el.querySelector(".switch").addEventListener("click", async (ev) => {
+            const id = ev.currentTarget.getAttribute("data-id");
+            const enabled = !ev.currentTarget.classList.contains("on");
+            try {
+              const res = await fetch(`/admin/sessions/${id}/toggle`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ enabled }),
+              });
+              let body = null;
+              try {
+                body = await res.json();
+              } catch (_) {}
+              if (!res.ok) {
+                const msg = (body && body.error) ? body.error : "HTTP " + res.status;
+                throw new Error(msg);
+              }
+              showToast(body && body.savedPath ? ("已保存到 " + body.savedPath) : "已更新");
+              await loadStatus();
+            } catch (e) {
+              showToast("更新失败：" + e.message);
+            }
+          });
+
+          wrap.appendChild(el);
+        }
+      }
+
+      async function loadStatus() {
+        const res = await fetch("/admin/status", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        render(data);
+      }
+
+      function setAutoRefresh(enabled) {
+        try {
+          localStorage.setItem(AUTO_REFRESH_LS_KEY, enabled ? "1" : "0");
+        } catch (_) {}
+
+        if (autoRefreshTimer) {
+          clearInterval(autoRefreshTimer);
+          autoRefreshTimer = null;
+        }
+        autoRefreshFailStreak = 0;
+
+        if (!enabled) return;
+        autoRefreshTimer = setInterval(async () => {
+          try {
+            await loadStatus();
+            autoRefreshFailStreak = 0;
+          } catch (e) {
+            autoRefreshFailStreak += 1;
+            // 连续失败时再提示，避免刷屏
+            if (autoRefreshFailStreak === 3) {
+              showToast("自动刷新失败：" + e.message);
+            }
+          }
+        }, 30 * 1000);
+      }
+
+      function openModal() {
+        $("modal").classList.add("show");
+      }
+      function closeModal() {
+        $("modal").classList.remove("show");
+        $("inName").value = "";
+        $("inAccount").value = "";
+        $("inSession").value = "";
+        $("inOrg").value = "";
+      }
+
+      $("btnAdd").addEventListener("click", openModal);
+      $("btnCancel").addEventListener("click", closeModal);
+      $("modal").addEventListener("click", (e) => {
+        if (e.target === $("modal")) closeModal();
+      });
+
+      $("btnSubmit").addEventListener("click", async () => {
+        const name = $("inName").value.trim();
+        const account = $("inAccount").value.trim();
+        const sessionKey = $("inSession").value.trim();
+        const orgID = $("inOrg").value.trim();
+        if (!sessionKey) {
+          showToast("sessionKey 不能为空");
+          return;
+        }
+        try {
+          const res = await fetch("/admin/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, account, sessionKey, orgID }),
+          });
+          let body = null;
+          try {
+            body = await res.json();
+          } catch (_) {}
+          if (!res.ok) {
+            const msg = (body && body.error) ? body.error : "HTTP " + res.status;
+            throw new Error(msg);
+          }
+          showToast(body && body.savedPath ? ("已添加，已保存到 " + body.savedPath) : "已添加");
+          closeModal();
+          await loadStatus();
+        } catch (e) {
+          showToast("添加失败：" + e.message);
+        }
+      });
+
+      $("btnRefresh").addEventListener("click", async () => {
+        try {
+          await loadStatus();
+          autoRefreshFailStreak = 0;
+          showToast("已刷新");
+        } catch (e) {
+          showToast("刷新失败：" + e.message);
+        }
+      });
+
+      (async () => {
+        try {
+          await loadStatus();
+        } catch (e) {
+          showToast("提示：首次打开请用 /admin?key=<ADMIN_KEY 或 APIKEY>");
+        }
+
+        // 自动刷新开关（默认关闭）
+        let enabled = false;
+        try {
+          enabled = localStorage.getItem(AUTO_REFRESH_LS_KEY) === "1";
+        } catch (_) {}
+        $("autoRefresh").checked = enabled;
+        setAutoRefresh(enabled);
+      })();
+
+      $("autoRefresh").addEventListener("change", (e) => {
+        setAutoRefresh(!!e.target.checked);
+        showToast(e.target.checked ? "已开启自动刷新" : "已关闭自动刷新");
+      });
+    </script>
+  </body>
+</html>

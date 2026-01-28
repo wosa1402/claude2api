@@ -18,6 +18,10 @@ import (
 type SessionInfo struct {
 	SessionKey string `yaml:"sessionKey"`
 	OrgID      string `yaml:"orgID"`
+	// 仅用于管理界面展示（可选）
+	Name    string `yaml:"name"`
+	Account string `yaml:"account"`
+	Enabled bool   `yaml:"enabled"`
 }
 
 type SessionRagen struct {
@@ -29,6 +33,7 @@ type Config struct {
 	Sessions               []SessionInfo `yaml:"sessions"`
 	Address                string        `yaml:"address"`
 	APIKey                 string        `yaml:"apiKey"`
+	AdminKey               string        `yaml:"adminKey"`
 	Proxy                  string        `yaml:"proxy"`
 	ChatDelete             bool          `yaml:"chatDelete"`
 	MaxChatHistoryLength   int           `yaml:"maxChatHistoryLength"`
@@ -56,6 +61,7 @@ func parseSessionEnv(envValue string) (int, []SessionInfo) {
 		parts := strings.Split(pair, ":")
 		session := SessionInfo{
 			SessionKey: parts[0],
+			Enabled:    true,
 		}
 
 		if len(parts) > 1 {
@@ -74,11 +80,11 @@ func parseSessionEnv(envValue string) (int, []SessionInfo) {
 
 // 根据模型选择合适的 session
 func (c *Config) GetSessionForModel(idx int) (SessionInfo, error) {
+	c.RwMutx.RLock()
+	defer c.RwMutx.RUnlock()
 	if len(c.Sessions) == 0 || idx < 0 || idx >= len(c.Sessions) {
 		return SessionInfo{}, fmt.Errorf("invalid session index: %d", idx)
 	}
-	c.RwMutx.RLock()
-	defer c.RwMutx.RUnlock()
 	return c.Sessions[idx], nil
 }
 
@@ -97,8 +103,17 @@ func (sr *SessionRagen) NextIndex() int {
 	sr.Mutex.Lock()
 	defer sr.Mutex.Unlock()
 
-	index := sr.Index
-	sr.Index = (index + 1) % len(ConfigInstance.Sessions)
+	ConfigInstance.RwMutx.RLock()
+	defer ConfigInstance.RwMutx.RUnlock()
+
+	n := len(ConfigInstance.Sessions)
+	if n <= 0 {
+		sr.Index = 0
+		return 0
+	}
+
+	index := sr.Index % n
+	sr.Index = (index + 1) % n
 	return index
 }
 
@@ -166,6 +181,8 @@ func loadConfigFromEnv() *Config {
 
 		// 设置 API 认证密钥
 		APIKey: os.Getenv("APIKEY"),
+		// 设置管理端口令（可选）
+		AdminKey: os.Getenv("ADMIN_KEY"),
 		// 设置代理地址
 		Proxy: os.Getenv("PROXY"),
 		// 自动删除聊天
@@ -231,6 +248,7 @@ func init() {
 	}
 	logger.Info(fmt.Sprintf("Address: %s", ConfigInstance.Address))
 	logger.Info(fmt.Sprintf("APIKey: %s", ConfigInstance.APIKey))
+	logger.Info(fmt.Sprintf("AdminKey: %s", ConfigInstance.AdminKey))
 	logger.Info(fmt.Sprintf("Proxy: %s", ConfigInstance.Proxy))
 	logger.Info(fmt.Sprintf("ChatDelete: %t", ConfigInstance.ChatDelete))
 	logger.Info(fmt.Sprintf("MaxChatHistoryLength: %d", ConfigInstance.MaxChatHistoryLength))

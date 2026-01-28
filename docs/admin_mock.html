@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Claude2API 控制台（简化版）</title>
+    <style>
+      :root {
+        --bg0: #070a12;
+        --bg1: rgba(255, 255, 255, 0.06);
+        --bg2: rgba(255, 255, 255, 0.08);
+        --border: rgba(255, 255, 255, 0.10);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.65);
+        --muted2: rgba(255, 255, 255, 0.45);
+        --good: #22c55e;
+        --bad: #ef4444;
+        --warn: #f59e0b;
+        --chip: rgba(255, 255, 255, 0.10);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background:
+          radial-gradient(1000px 600px at 25% 20%, rgba(59,130,246,0.18), transparent 60%),
+          radial-gradient(900px 500px at 70% 30%, rgba(168,85,247,0.14), transparent 60%),
+          radial-gradient(1100px 700px at 40% 90%, rgba(34,197,94,0.10), transparent 55%),
+          var(--bg0);
+      }
+
+      .container { max-width: 1100px; margin: 28px auto; padding: 0 16px 28px; }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+        border-radius: 14px;
+        backdrop-filter: blur(10px);
+      }
+
+      .brand { display: flex; align-items: center; gap: 10px; }
+      .logo {
+        width: 34px; height: 34px; border-radius: 10px;
+        background: conic-gradient(from 180deg, #7c3aed, #2563eb, #22c55e, #f59e0b, #ef4444, #7c3aed);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.35);
+      }
+      .title { font-weight: 700; letter-spacing: 0.2px; }
+      .sub { font-size: 12px; color: var(--muted2); margin-top: 2px; }
+
+      .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+      .btn {
+        appearance: none;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.06);
+        color: var(--text);
+        padding: 8px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .btn:hover { background: rgba(255,255,255,0.09); }
+      .btn:active { transform: translateY(1px); }
+
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 13px;
+        user-select: none;
+      }
+      .switch {
+        width: 44px; height: 24px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.14);
+        border: 1px solid var(--border);
+        position: relative;
+        cursor: pointer;
+      }
+      .knob {
+        width: 20px; height: 20px; border-radius: 999px;
+        background: rgba(255,255,255,0.88);
+        position: absolute; top: 1px; left: 1px;
+        transition: left 160ms ease, background 160ms ease;
+      }
+      .switch.on { background: rgba(34,197,94,0.20); border-color: rgba(34,197,94,0.35); }
+      .switch.on .knob { left: 21px; background: #d1fae5; }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .summary {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 14px;
+      }
+      @media (max-width: 900px) { .summary { grid-template-columns: 1fr; } }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.06);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.28);
+      }
+
+      .card h2 {
+        margin: 0;
+        padding: 14px 16px 10px;
+        font-size: 14px;
+        color: var(--muted);
+        letter-spacing: 0.2px;
+      }
+      .card .content { padding: 0 16px 16px; }
+
+      .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+      @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+
+      .kpi {
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,0.20);
+        border-radius: 14px;
+        padding: 12px;
+      }
+      .kpi .label { color: var(--muted2); font-size: 12px; }
+      .kpi .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+      .kpi .hint { color: var(--muted2); font-size: 12px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      .accounts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+      @media (max-width: 900px) { .accounts { grid-template-columns: 1fr; } }
+
+      .acc {
+        padding: 14px 14px 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .acc-top {
+        display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+      }
+      .acc-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+      .acc-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .acc-meta { color: var(--muted2); font-size: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+
+      .badge {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.06);
+        color: var(--muted);
+        font-size: 12px;
+        flex: 0 0 auto;
+      }
+      .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--muted2); }
+      .badge.good { border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.12); color: rgba(209,250,229,0.9); }
+      .badge.good .dot { background: var(--good); }
+      .badge.bad { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.12); color: rgba(254,226,226,0.9); }
+      .badge.bad .dot { background: var(--bad); }
+      .badge.warn { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.12); color: rgba(255,237,213,0.92); }
+      .badge.warn .dot { background: var(--warn); }
+
+      .pills { display: flex; gap: 10px; flex-wrap: wrap; }
+      .pill {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(0,0,0,0.18);
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .pill strong { color: var(--text); font-weight: 800; }
+      .pill.ok strong { color: rgba(209,250,229,0.95); }
+      .pill.fail strong { color: rgba(254,226,226,0.95); }
+      .pill.rate { background: rgba(245,158,11,0.10); border-color: rgba(245,158,11,0.30); }
+
+      .spark {
+        display: flex; align-items: center; gap: 10px;
+      }
+      .sparkline {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 10px;
+        gap: 4px;
+        align-items: center;
+        min-height: 14px;
+      }
+      .sq {
+        width: 10px; height: 10px;
+        border-radius: 3px;
+        border: 1px solid rgba(255,255,255,0.10);
+        background: rgba(255,255,255,0.10);
+      }
+      .sq.ok { background: rgba(34,197,94,0.90); border-color: rgba(34,197,94,0.55); }
+      .sq.fail { background: rgba(239,68,68,0.90); border-color: rgba(239,68,68,0.55); }
+      .sq.none { background: rgba(255,255,255,0.08); }
+
+      .acc-actions {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding-top: 4px;
+      }
+      .iconbar { display: flex; align-items: center; gap: 8px; }
+      .iconbtn {
+        width: 36px; height: 32px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.06);
+        cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+      }
+      .iconbtn:hover { background: rgba(255,255,255,0.09); }
+      .iconbtn.danger { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.28); }
+
+      .muted { color: var(--muted2); }
+      .foot { margin-top: 14px; color: var(--muted2); font-size: 12px; text-align: center; }
+
+      /* Simple toast */
+      .toast {
+        position: fixed;
+        bottom: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.55);
+        border: 1px solid var(--border);
+        padding: 10px 12px;
+        border-radius: 12px;
+        color: var(--text);
+        font-size: 13px;
+        display: none;
+        backdrop-filter: blur(10px);
+      }
+      .toast.show { display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="brand">
+          <div class="logo" aria-hidden="true"></div>
+          <div>
+            <div class="title">Claude2API 控制台（简化版）</div>
+            <div class="sub">账号状态 · 调用统计 · 最近调用条</div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="btnRefresh" type="button">
+            <span aria-hidden="true">⟲</span><span>立即刷新</span>
+          </button>
+          <label class="toggle">
+            <span>自动刷新（10秒）</span>
+            <span class="switch on" id="autoSwitch" role="switch" aria-checked="true" tabindex="0">
+              <span class="knob"></span>
+            </span>
+          </label>
+        </div>
+      </header>
+
+      <div class="grid">
+        <section class="summary">
+          <div class="card">
+            <h2>全局概览</h2>
+            <div class="content">
+              <div class="kpi-row">
+                <div class="kpi">
+                  <div class="label">成功率</div>
+                  <div class="value" id="kpiRate">--</div>
+                  <div class="hint muted" id="kpiLastAt">最近：--</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">成功</div>
+                  <div class="value" id="kpiOk">--</div>
+                  <div class="hint muted" id="kpiLastOk">最近成功：--</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">失败</div>
+                  <div class="value" id="kpiFail">--</div>
+                  <div class="hint muted" id="kpiLastErr">最近错误：--</div>
+                </div>
+                <div class="kpi">
+                  <div class="label">活跃账号</div>
+                  <div class="value" id="kpiAccounts">--</div>
+                  <div class="hint muted" id="kpiEnabled">启用：--</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>说明</h2>
+            <div class="content">
+              <div class="muted" style="line-height: 1.6">
+                - 每次调用 <code>/v1/chat/completions</code> 记为 1 次<br />
+                - 小方块条展示最近 30 次调用结果（绿=成功 / 红=失败 / 灰=无数据）<br />
+                - 这是纯前端预览版：会尝试拉取 <code>/admin/status</code>，失败则展示示例数据
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>账号列表</h2>
+          <div class="content">
+            <div class="accounts" id="accounts"></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="foot">提示：把这个页面放到服务里时，建议给 <code>/admin</code> 加独立的 <code>ADMIN_KEY</code> 或 IP 白名单。</div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+
+      function fmtPct(x) {
+        if (typeof x !== "number" || Number.isNaN(x)) return "--";
+        return (x * 100).toFixed(1) + "%";
+      }
+      function fmtInt(x) {
+        if (typeof x !== "number" || Number.isNaN(x)) return "--";
+        return String(x);
+      }
+      function fmtTime(iso) {
+        if (!iso) return "--";
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return "--";
+        return d.toLocaleString();
+      }
+      function safeStr(s) {
+        return (s == null ? "" : String(s)).slice(0, 120);
+      }
+
+      function showToast(msg) {
+        const t = $("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2200);
+      }
+
+      function statusBadge(a) {
+        // 简单判定：启用且最近错误为空 -> 正常；启用但最近错误存在 -> 异常；未启用 -> 冷却
+        if (!a.enabled) return { cls: "warn", text: "冷却/禁用" };
+        if (a.lastError) return { cls: "bad", text: "异常" };
+        return { cls: "good", text: "正常" };
+      }
+
+      function iconSvg(name) {
+        const common = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+        if (name === "info") return `<svg ${common}><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>`;
+        if (name === "download") return `<svg ${common}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`;
+        if (name === "code") return `<svg ${common}><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`;
+        if (name === "trash") return `<svg ${common}><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg>`;
+        return "";
+      }
+
+      function render(data) {
+        const g = data.global || {};
+        const accounts = data.accounts || [];
+
+        $("kpiRate").textContent = fmtPct(g.successRate);
+        $("kpiOk").textContent = fmtInt(g.ok);
+        $("kpiFail").textContent = fmtInt(g.fail);
+        $("kpiAccounts").textContent = fmtInt(accounts.length);
+
+        $("kpiLastAt").textContent = "最近：" + fmtTime(g.lastAt);
+        $("kpiLastOk").textContent = "最近成功：" + fmtTime(g.lastOkAt);
+        $("kpiLastErr").textContent = "最近错误：" + (g.lastError ? safeStr(g.lastError) : "--");
+        $("kpiEnabled").textContent = "启用：" + fmtInt(accounts.filter((a) => a.enabled).length);
+
+        const wrap = $("accounts");
+        wrap.innerHTML = "";
+
+        for (const a of accounts) {
+          const badge = statusBadge(a);
+          const ok = a.ok || 0;
+          const fail = a.fail || 0;
+          const rate = (ok + fail) > 0 ? ok / (ok + fail) : 0;
+          const recent = Array.isArray(a.recent) ? a.recent : [];
+
+          const squares = [];
+          const fixed = 30;
+          for (let i = 0; i < fixed; i++) {
+            const v = recent[i];
+            if (v === true) squares.push(`<span class="sq ok" title="成功"></span>`);
+            else if (v === false) squares.push(`<span class="sq fail" title="失败"></span>`);
+            else squares.push(`<span class="sq none" title="无数据"></span>`);
+          }
+
+          const el = document.createElement("div");
+          el.className = "card acc";
+          el.innerHTML = `
+            <div class="acc-top">
+              <div class="acc-title">
+                <div class="acc-name">${safeStr(a.maskedKey || "sk-****")}</div>
+                <div class="acc-meta">
+                  <span>最近：${fmtTime(a.lastAt)}</span>
+                  <span>错误：${a.lastError ? safeStr(a.lastError) : "无"}</span>
+                </div>
+              </div>
+              <span class="badge ${badge.cls}">
+                <span class="dot"></span>
+                <span>${badge.text}</span>
+              </span>
+            </div>
+
+            <div class="pills">
+              <span class="pill ok">成功：<strong>${ok}</strong></span>
+              <span class="pill fail">失败：<strong>${fail}</strong></span>
+              <span class="pill rate">成功率：<strong>${(rate * 100).toFixed(1)}%</strong></span>
+            </div>
+
+            <div class="spark">
+              <div class="sparkline" aria-label="最近调用记录">${squares.join("")}</div>
+              <span class="pill" style="padding: 6px 10px">${(rate * 100).toFixed(1)}%</span>
+            </div>
+
+            <div class="acc-actions">
+              <div class="iconbar">
+                <button class="iconbtn" type="button" title="详情（占位）">${iconSvg("info")}</button>
+                <button class="iconbtn" type="button" title="导出（占位）">${iconSvg("download")}</button>
+                <button class="iconbtn" type="button" title="接口（占位）">${iconSvg("code")}</button>
+                <button class="iconbtn danger" type="button" title="清空统计（占位）">${iconSvg("trash")}</button>
+              </div>
+              <label class="toggle" title="启用/禁用（仅预览，需后端支持）">
+                <span class="muted">启用</span>
+                <span class="switch ${a.enabled ? "on" : ""}" data-action="toggle">
+                  <span class="knob"></span>
+                </span>
+              </label>
+            </div>
+          `;
+
+          el.querySelector('[data-action="toggle"]').addEventListener("click", () => {
+            showToast("这是预览页面：需要后端 /admin/accounts/{id}/toggle 才能生效");
+          });
+
+          wrap.appendChild(el);
+        }
+      }
+
+      async function loadStatus() {
+        // 注意：真实接入时替换为你的后端接口（同域部署则无需改）
+        const url = "/admin/status";
+        try {
+          const res = await fetch(url, { cache: "no-store" });
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          const data = await res.json();
+          render(data);
+          showToast("已刷新");
+        } catch (e) {
+          // fallback 示例数据（更接近截图的视觉）
+          render({
+            global: {
+              ok: 103,
+              fail: 8,
+              successRate: 103 / (103 + 8),
+              lastAt: new Date().toISOString(),
+              lastOkAt: new Date().toISOString(),
+              lastError: "",
+            },
+            accounts: [
+              {
+                id: 0,
+                maskedKey: "sk-a****mgAA",
+                enabled: true,
+                ok: 103,
+                fail: 8,
+                lastError: "",
+                lastAt: new Date().toISOString(),
+                recent: (() => {
+                  const arr = Array(30).fill(null);
+                  const pattern = [true,true,true,true,false,true,true,false,true,true,true,true,true,true,true,true,true,false,true,true,true,true,true,true,true,true,true,true,true,true];
+                  for (let i = 0; i < arr.length; i++) arr[i] = pattern[i] ?? null;
+                  return arr;
+                })(),
+              },
+              {
+                id: 1,
+                maskedKey: "sk-b****9xY7",
+                enabled: true,
+                ok: 12,
+                fail: 6,
+                lastError: "403",
+                lastAt: new Date().toISOString(),
+                recent: (() => {
+                  const arr = Array(30).fill(null);
+                  for (let i = 0; i < 18; i++) arr[i] = i % 3 === 0 ? false : true;
+                  return arr;
+                })(),
+              },
+              {
+                id: 2,
+                maskedKey: "sk-c****1pQ0",
+                enabled: false,
+                ok: 0,
+                fail: 0,
+                lastError: "",
+                lastAt: "",
+                recent: Array(30).fill(null),
+              },
+            ],
+          });
+          showToast("无法访问 /admin/status，已展示示例数据（需后端实现接口）");
+        }
+      }
+
+      let timer = null;
+      function setAuto(on) {
+        const sw = $("autoSwitch");
+        sw.classList.toggle("on", on);
+        sw.setAttribute("aria-checked", on ? "true" : "false");
+        if (timer) clearInterval(timer);
+        timer = on ? setInterval(loadStatus, 10000) : null;
+      }
+
+      $("btnRefresh").addEventListener("click", loadStatus);
+      $("autoSwitch").addEventListener("click", () => setAuto(!$("autoSwitch").classList.contains("on")));
+      $("autoSwitch").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setAuto(!$("autoSwitch").classList.contains("on"));
+        }
+      });
+
+      // first paint
+      loadStatus();
+      setAuto(true);
+    </script>
+  </body>
+</html>
+

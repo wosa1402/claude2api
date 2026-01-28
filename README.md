@@ -7,7 +7,7 @@ The API supports access in the OpenAI format.
 |[中文](https://github.com/yushangxiao/claude2api/blob/main/docs/chinses.md)
 
 
-NOTICE: ONLY PRO USER CAN USE ALL MODELS , FREE USER ONLY CAN USE claude-sonnet-4-20250514
+NOTICE: ONLY PRO USER CAN USE ALL MODELS , FREE USER CAN USE claude-haiku-4-5-20251001 / claude-sonnet-4-5-20250929
 
 ## ✨ Features
 

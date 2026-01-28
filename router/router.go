@@ -13,6 +13,12 @@ func SetupRoutes(r *gin.Engine) {
 	r.Use(middleware.CORSMiddleware())
 	r.Use(middleware.AuthMiddleware())
 
+	// Admin (simple dashboard)
+	r.GET("/admin", service.AdminPageHandler)
+	r.GET("/admin/status", service.AdminStatusHandler)
+	r.POST("/admin/sessions", service.AdminAddSessionHandler)
+	r.POST("/admin/sessions/:id/toggle", service.AdminToggleSessionHandler)
+
 	// Health check endpoint
 	r.GET("/health", service.HealthCheckHandler)
 
