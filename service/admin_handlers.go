@@ -359,3 +359,75 @@ func AdminAutoClassifySessionHandler(c *gin.Context) {
 		"suggestedPool": suggestedPool,
 	})
 }
+
+func AdminDeleteSessionHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id < 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id 不合法"})
+		return
+	}
+
+	var removed config.SessionInfo
+	var removedKey string
+	var removedIdx = -1
+
+	config.ConfigInstance.RwMutx.Lock()
+	if id >= len(config.ConfigInstance.Sessions) {
+		config.ConfigInstance.RwMutx.Unlock()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id 超出范围"})
+		return
+	}
+	removedIdx = id
+	removed = config.ConfigInstance.Sessions[id]
+	removedKey = removed.SessionKey
+	config.ConfigInstance.Sessions = append(config.ConfigInstance.Sessions[:id], config.ConfigInstance.Sessions[id+1:]...)
+	// RetryCount 规则：默认等于 session 数量，最大 5
+	if n := len(config.ConfigInstance.Sessions); n > 0 {
+		if n > 5 {
+			config.ConfigInstance.RetryCount = 5
+		} else {
+			config.ConfigInstance.RetryCount = n
+		}
+	} else {
+		config.ConfigInstance.RetryCount = 0
+	}
+	config.ConfigInstance.RwMutx.Unlock()
+
+	// 清理内存统计（避免残留）
+	statsMu.Lock()
+	delete(perSession, removedKey)
+	statsMu.Unlock()
+
+	path, err := config.PersistConfig()
+	if err != nil {
+		// 回滚配置
+		config.ConfigInstance.RwMutx.Lock()
+		if removedIdx >= 0 && removedIdx <= len(config.ConfigInstance.Sessions) {
+			config.ConfigInstance.Sessions = append(config.ConfigInstance.Sessions[:removedIdx],
+				append([]config.SessionInfo{removed}, config.ConfigInstance.Sessions[removedIdx:]...)...)
+		} else {
+			config.ConfigInstance.Sessions = append(config.ConfigInstance.Sessions, removed)
+		}
+		if n := len(config.ConfigInstance.Sessions); n > 0 {
+			if n > 5 {
+				config.ConfigInstance.RetryCount = 5
+			} else {
+				config.ConfigInstance.RetryCount = n
+			}
+		}
+		config.ConfigInstance.RwMutx.Unlock()
+
+		// 回滚统计
+		statsMu.Lock()
+		if removedKey != "" {
+			delete(perSession, removedKey)
+		}
+		statsMu.Unlock()
+
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "保存配置失败：" + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"ok": true, "savedPath": path})
+}
