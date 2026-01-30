@@ -26,6 +26,7 @@ func AdminPageHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "failed to load admin page")
 		return
 	}
+	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", b)
 }
 
@@ -43,6 +44,7 @@ func AdminLoginPageHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "failed to load login page")
 		return
 	}
+	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", b)
 }
 
@@ -57,5 +59,6 @@ func AdminSetupPageHandler(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "failed to load setup page")
 		return
 	}
+	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", b)
 }

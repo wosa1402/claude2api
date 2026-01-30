@@ -322,18 +322,20 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        min-width: 0;
       }
       .sparkline {
+        flex: 1 1 auto;
+        min-width: 0;
+        max-width: 416px; /* 30*10 + 29*4 = 416 */
         display: grid;
-        grid-auto-flow: column;
-        grid-auto-columns: 10px;
+        grid-template-columns: repeat(30, minmax(0, 1fr));
         gap: 4px;
         align-items: center;
-        min-height: 14px;
       }
       .sq {
-        width: 10px;
-        height: 10px;
+        width: 100%;
+        aspect-ratio: 1 / 1;
         border-radius: 3px;
         border: 1px solid rgba(255, 255, 255, 0.1);
         background: rgba(255, 255, 255, 0.1);
