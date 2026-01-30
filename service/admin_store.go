@@ -2,8 +2,6 @@ package service
 
 import (
 	"claude2api/config"
-	"os"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -71,14 +69,7 @@ var statsMu sync.Mutex
 var perSession = map[string]*accountStat{}
 var global = globalStat{}
 
-func cooldownDuration() time.Duration {
-	// 默认 60 分钟，可通过 COOLDOWN_MINUTES 覆盖
-	minutes, err := strconv.Atoi(os.Getenv("COOLDOWN_MINUTES"))
-	if err != nil || minutes <= 0 {
-		minutes = 60
-	}
-	return time.Duration(minutes) * time.Minute
-}
+const cooldownDuration = 5 * time.Hour
 
 func maskKey(s string) string {
 	if s == "" {
@@ -116,9 +107,15 @@ func recordAttempt(session config.SessionInfo, ok bool, errType string) {
 	} else {
 		s.Fail++
 		s.LastError = errType
-		s.FailStreak++
+		// 429：一次即进入冷却（5小时）；不计入“连续错误”判定
 		if errType == "429" {
-			s.CooldownUntil = now.Add(cooldownDuration())
+			if s.CooldownUntil.IsZero() || !s.CooldownUntil.After(now) {
+				s.CooldownUntil = now.Add(cooldownDuration)
+			}
+			s.FailStreak = 0
+		} else {
+			// 连续错误：不包括 429
+			s.FailStreak++
 		}
 		s.Recent.push(false)
 	}

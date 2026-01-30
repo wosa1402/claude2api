@@ -84,8 +84,18 @@ func ChatCompletionsHandler(c *gin.Context) {
 
 	// 构建候选 session 列表（按 pool + enabled 过滤）
 	config.ConfigInstance.RwMutx.RLock()
-	candidates := make([]config.SessionInfo, 0, len(config.ConfigInstance.Sessions))
-	for _, s := range config.ConfigInstance.Sessions {
+	sessionsSnap := make([]config.SessionInfo, len(config.ConfigInstance.Sessions))
+	copy(sessionsSnap, config.ConfigInstance.Sessions)
+	retryCount := config.ConfigInstance.RetryCount
+	config.ConfigInstance.RwMutx.RUnlock()
+
+	now := time.Now()
+	candidates := make([]config.SessionInfo, 0, len(sessionsSnap))
+	poolEnabledTotal := 0
+	cooldownSkipped := 0
+	var earliestCooldown time.Time
+
+	for _, s := range sessionsSnap {
 		if !s.Enabled {
 			continue
 		}
@@ -94,13 +104,41 @@ func ChatCompletionsHandler(c *gin.Context) {
 			pool = "low"
 		}
 		if pool == wantPool {
+			poolEnabledTotal++
+
+			// 冷却中的账号直接跳过
+			statsMu.Lock()
+			st := perSession[s.SessionKey]
+			var cd time.Time
+			if st != nil {
+				cd = st.CooldownUntil
+			}
+			statsMu.Unlock()
+
+			if !cd.IsZero() && cd.After(now) {
+				cooldownSkipped++
+				if earliestCooldown.IsZero() || cd.Before(earliestCooldown) {
+					earliestCooldown = cd
+				}
+				continue
+			}
 			candidates = append(candidates, s)
 		}
 	}
-	retryCount := config.ConfigInstance.RetryCount
-	config.ConfigInstance.RwMutx.RUnlock()
 
 	if len(candidates) == 0 {
+		// 池子里有账号，但都在冷却
+		if poolEnabledTotal > 0 && cooldownSkipped == poolEnabledTotal && !earliestCooldown.IsZero() {
+			sec := int(time.Until(earliestCooldown).Seconds())
+			if sec < 1 {
+				sec = 1
+			}
+			c.Header("Retry-After", fmt.Sprintf("%d", sec))
+			c.JSON(http.StatusTooManyRequests, ErrorResponse{
+				Error: fmt.Sprintf("所有账号处于冷却中，最早恢复时间：%s", earliestCooldown.Format(time.RFC3339)),
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: fmt.Sprintf("无可用账号：pool=%s（请在 /admin 为 session 设置 pool）", wantPool),
 		})
