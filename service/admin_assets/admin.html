@@ -216,9 +216,9 @@
         gap: 10px;
       }
       .acc-top {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: start;
         gap: 10px;
       }
       .acc-title {
@@ -226,6 +226,7 @@
         flex-direction: column;
         gap: 4px;
         min-width: 0;
+        overflow: hidden;
       }
       .acc-name {
         font-weight: 700;
@@ -253,6 +254,7 @@
         color: var(--muted);
         font-size: 12px;
         flex: 0 0 auto;
+        white-space: nowrap;
       }
       .dot {
         width: 8px;
