@@ -165,8 +165,8 @@ func ChatCompletionsHandler(c *gin.Context) {
 			processor.Prompt.WriteString(processor.RootPrompt.String())
 		}
 		// Initialize client and process request
-		ok, errType := handleChatRequest(c, session, model, processor, req.Stream)
-		recordAttempt(session, ok, errType)
+		ok, errType, remoteIP, remoteAt := handleChatRequest(c, session, model, processor, req.Stream)
+		recordAttempt(session, ok, errType, remoteIP, remoteAt)
 		if ok {
 			return // Success, exit the retry loop
 		}
@@ -214,8 +214,8 @@ func MirrorChatHandler(c *gin.Context) {
 	}
 
 	// Process the request with the provided session
-	ok, errType := handleChatRequest(c, session, model, processor, req.Stream)
-	recordAttempt(session, ok, errType)
+	ok, errType, remoteIP, remoteAt := handleChatRequest(c, session, model, processor, req.Stream)
+	recordAttempt(session, ok, errType, remoteIP, remoteAt)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "Failed to process request",
@@ -269,7 +269,7 @@ func extractSessionFromAuthHeader(c *gin.Context) (config.SessionInfo, error) {
 	return config.SessionInfo{SessionKey: authInfo, OrgID: "", Enabled: true}, nil
 }
 
-func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string) {
+func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string, string, time.Time) {
 	// Initialize the Claude client
 	claudeClient := core.NewClient(session.SessionKey, config.ConfigInstance.Proxy, model)
 
@@ -278,7 +278,8 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		orgId, err := claudeClient.GetOrgID()
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to get org ID: %v", err))
-			return false, classifyErr(err)
+			remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
+			return false, classifyErr(err), remoteIP, remoteAt
 		}
 		session.OrgID = orgId
 		config.ConfigInstance.SetSessionOrgID(session.SessionKey, session.OrgID)
@@ -291,7 +292,8 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		err := claudeClient.UploadFile(processor.ImgDataList)
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to upload file: %v", err))
-			return false, classifyErr(err)
+			remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
+			return false, classifyErr(err), remoteIP, remoteAt
 		}
 	}
 
@@ -306,14 +308,16 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 	conversationID, err := claudeClient.CreateConversation()
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to create conversation: %v", err))
-		return false, classifyErr(err)
+		remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
+		return false, classifyErr(err), remoteIP, remoteAt
 	}
 
 	// Send message
 	if _, err := claudeClient.SendMessage(conversationID, processor.Prompt.String(), stream, c); err != nil {
 		logger.Error(fmt.Sprintf("Failed to send message: %v", err))
 		go cleanupConversation(claudeClient, conversationID, 3)
-		return false, classifyErr(err)
+		remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
+		return false, classifyErr(err), remoteIP, remoteAt
 	}
 
 	// Clean up conversation if enabled
@@ -321,7 +325,8 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		go cleanupConversation(claudeClient, conversationID, 3)
 	}
 
-	return true, ""
+	remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
+	return true, "", remoteIP, remoteAt
 }
 
 func cleanupConversation(client *core.Client, conversationID string, retry int) {

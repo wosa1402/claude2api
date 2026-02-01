@@ -4,14 +4,18 @@ import (
 	"bufio"
 	"claude2api/logger"
 	"claude2api/model"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +29,10 @@ type Client struct {
 	client       *req.Client
 	model        string
 	defaultAttrs map[string]interface{}
+
+	lastDialMu     sync.Mutex
+	lastDialAt     time.Time
+	lastDialRemote string // 远端 IP（claude.ai 或代理），仅用于展示“本次调用走的 v4/v6”
 }
 
 type ResponseEvent struct {
@@ -102,7 +110,46 @@ func NewClient(sessionKey string, proxy string, model string) *Client {
 			"timezone":            "America/Los_Angeles",
 		},
 	}
+
+	// 记录实际拨号使用的远端 IP（从而判断走 IPv4 还是 IPv6）
+	// 说明：
+	// - 这是“本进程 -> claude.ai（或代理）”连接层面的观测，不等价于公网出口 IP
+	// - req/v3 底层会使用 net/http 的连接复用；但本项目每次请求都会 NewClient，因此“本次调用”的观测基本可靠
+	client.SetDial(func(ctx context.Context, network, addr string) (net.Conn, error) {
+		d := &net.Dialer{Timeout: 20 * time.Second}
+		conn, err := d.DialContext(ctx, network, addr)
+		if err == nil && conn != nil {
+			remote := conn.RemoteAddr().String()
+			host, _, _ := net.SplitHostPort(remote)
+			// 只记录 IP 形式（避免把端口带到 UI）
+			if host != "" {
+				if ip, err := netip.ParseAddr(host); err == nil {
+					c.setLastDialRemote(ip.String())
+				} else {
+					c.setLastDialRemote(host)
+				}
+			} else {
+				c.setLastDialRemote(remote)
+			}
+		}
+		return conn, err
+	})
+
 	return c
+}
+
+func (c *Client) setLastDialRemote(remote string) {
+	c.lastDialMu.Lock()
+	c.lastDialAt = time.Now()
+	c.lastDialRemote = remote
+	c.lastDialMu.Unlock()
+}
+
+// LastDialRemoteIP 返回最近一次拨号使用的远端 IP（用于判断走 v4/v6）。
+func (c *Client) LastDialRemoteIP() (string, time.Time) {
+	c.lastDialMu.Lock()
+	defer c.lastDialMu.Unlock()
+	return c.lastDialRemote, c.lastDialAt
 }
 
 // SetOrgID sets the organization ID for the client

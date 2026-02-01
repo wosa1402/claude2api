@@ -55,6 +55,8 @@ type accountStat struct {
 	Recent        recentWindow
 	LastAt        time.Time
 	LastError     string
+	LastRemoteIP  string
+	LastRemoteAt  time.Time
 }
 
 type globalStat struct {
@@ -91,13 +93,17 @@ func getOrInitSessionStat(sessionKey string) *accountStat {
 	return ns
 }
 
-func recordAttempt(session config.SessionInfo, ok bool, errType string) {
+func recordAttempt(session config.SessionInfo, ok bool, errType string, remoteIP string, remoteAt time.Time) {
 	statsMu.Lock()
 	defer statsMu.Unlock()
 
 	now := time.Now()
 	s := getOrInitSessionStat(session.SessionKey)
 	s.LastAt = now
+	if remoteIP != "" {
+		s.LastRemoteIP = remoteIP
+		s.LastRemoteAt = remoteAt
+	}
 	if ok {
 		s.OK++
 		s.LastError = ""
