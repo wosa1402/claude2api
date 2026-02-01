@@ -87,16 +87,23 @@ clone_repository() {
 
 # 检查前置条件
 check_prerequisites() {
+    local check_type="${1:-all}"
     print_info "正在检查前置条件..."
 
     local missing_deps=()
 
-    if ! command_exists git; then
-        missing_deps+=("git")
+    # Git 是克隆仓库时必需的
+    if [[ "$check_type" == "all" || "$check_type" == "git" ]]; then
+        if ! command_exists git; then
+            missing_deps+=("git")
+        fi
     fi
 
-    if ! command_exists docker; then
-        missing_deps+=("docker")
+    # Docker 只在 docker 部署时检查
+    if [[ "$check_type" == "all" || "$check_type" == "docker" ]]; then
+        if ! command_exists docker; then
+            missing_deps+=("docker")
+        fi
     fi
 
     if [ ${#missing_deps[@]} -ne 0 ]; then
@@ -117,7 +124,7 @@ check_prerequisites() {
         exit 1
     fi
 
-    print_success "所有前置条件已满足"
+    print_success "前置条件检查通过"
 }
 
 # 创建 .env 文件（如果不存在）
@@ -392,9 +399,14 @@ main() {
             help|--help|-h|status|stop|"")
                 # 这些命令不需要项目文件
                 ;;
-            *)
-                # 其他命令需要克隆仓库
-                check_prerequisites
+            docker|compose)
+                # Docker 相关部署需要克隆仓库
+                check_prerequisites git
+                clone_repository
+                ;;
+            direct)
+                # 直接部署需要克隆仓库
+                check_prerequisites git
                 clone_repository
                 ;;
         esac
@@ -402,12 +414,12 @@ main() {
 
     case "${1:-}" in
         docker)
-            check_prerequisites
+            check_prerequisites docker
             setup_env
             deploy_docker
             ;;
         compose)
-            check_prerequisites
+            check_prerequisites docker
             setup_env
             deploy_docker_compose
             ;;
@@ -428,12 +440,7 @@ main() {
             show_usage
             ;;
         *)
-            # 如果不在项目目录，先克隆
-            if ! check_in_project_dir; then
-                check_prerequisites
-                clone_repository
-            fi
-
+            # 交互式菜单 - 先显示选项，再根据选择检查依赖
             print_info "请选择一种部署方式:"
             echo ""
             echo "1) Docker (推荐 - 无需安装 Go)"
@@ -447,16 +454,31 @@ main() {
 
             case $choice in
                 1)
-                    check_prerequisites
+                    # 如果不在项目目录，先克隆
+                    if ! check_in_project_dir; then
+                        check_prerequisites git
+                        clone_repository
+                    fi
+                    check_prerequisites docker
                     setup_env
                     deploy_docker
                     ;;
                 2)
-                    check_prerequisites
+                    # 如果不在项目目录，先克隆
+                    if ! check_in_project_dir; then
+                        check_prerequisites git
+                        clone_repository
+                    fi
+                    check_prerequisites docker
                     setup_env
                     deploy_docker_compose
                     ;;
                 3)
+                    # 如果不在项目目录，先克隆
+                    if ! check_in_project_dir; then
+                        check_prerequisites git
+                        clone_repository
+                    fi
                     setup_env
                     deploy_direct
                     ;;
