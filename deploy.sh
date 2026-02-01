@@ -509,6 +509,133 @@ EOF
     print_info "重启服务: systemctl restart claude2api"
 }
 
+# 更新项目
+update_project() {
+    print_info "正在更新 Claude2API..."
+    echo ""
+
+    # 检查是否在项目目录
+    if ! check_in_project_dir; then
+        print_error "请在项目目录中运行更新命令"
+        exit 1
+    fi
+
+    # 检查是否是 git 仓库
+    if [ ! -d ".git" ]; then
+        print_error "当前目录不是 git 仓库"
+        exit 1
+    fi
+
+    # 保存当前的 .env 文件
+    if [ -f .env ]; then
+        print_info "备份配置文件..."
+        cp .env .env.backup
+    fi
+
+    # 拉取最新代码
+    print_info "拉取最新代码..."
+    git fetch origin
+    git pull origin main
+
+    # 恢复 .env 文件
+    if [ -f .env.backup ]; then
+        mv .env.backup .env
+        print_success "配置文件已恢复"
+    fi
+
+    echo ""
+    print_success "🎉 更新完成！"
+    echo ""
+
+    # 询问是否重新部署
+    read -p "是否重新部署服务? [Y/n]: " redeploy
+    redeploy=${redeploy:-Y}
+
+    if [[ $redeploy == [yY] ]]; then
+        echo ""
+        print_info "检测当前部署方式..."
+
+        # 检测部署方式并重新部署
+        if command_exists systemctl && systemctl is-active --quiet claude2api; then
+            print_info "检测到 systemd 服务，正在重新部署..."
+            check_prerequisites go true
+            go build -o claude2api .
+            if [ "$(whoami)" = "root" ]; then
+                systemctl restart claude2api
+            else
+                sudo systemctl restart claude2api
+            fi
+            print_success "systemd 服务已重启"
+        elif docker ps --format '{{.Names}}' | grep -q "^claude2api$"; then
+            print_info "检测到 Docker 容器，正在重新部署..."
+            check_prerequisites docker true
+            docker stop claude2api
+            docker rm claude2api
+            docker build -t claude2api:latest .
+            docker run -d \
+                -p 8080:8080 \
+                --env-file .env \
+                --name claude2api \
+                --restart unless-stopped \
+                claude2api:latest
+            print_success "Docker 容器已重新部署"
+        elif docker compose ps 2>/dev/null | grep -q claude2api; then
+            print_info "检测到 Docker Compose，正在重新部署..."
+            check_prerequisites docker true
+            if docker compose version >/dev/null 2>&1; then
+                docker compose down
+                docker compose up -d --build
+            else
+                docker-compose down
+                docker-compose up -d --build
+            fi
+            print_success "Docker Compose 服务已重新部署"
+        else
+            print_warning "未检测到运行中的服务"
+            print_info "请手动重新部署服务"
+        fi
+    fi
+}
+
+# 安装全局命令
+install_global_command() {
+    local script_path=$(pwd)/deploy.sh
+    local bin_path="/usr/local/bin/claude2api"
+
+    print_info "正在安装全局命令..."
+
+    # 检查脚本是否存在
+    if [ ! -f "$script_path" ]; then
+        print_error "deploy.sh 脚本不存在"
+        return 1
+    fi
+
+    # 创建软链接
+    if [ "$(whoami)" = "root" ]; then
+        ln -sf "$script_path" "$bin_path"
+    else
+        print_info "需要 root 权限创建全局命令"
+        sudo ln -sf "$script_path" "$bin_path"
+    fi
+
+    # 确保脚本可执行
+    chmod +x "$script_path"
+
+    if command_exists claude2api; then
+        print_success "全局命令安装成功！"
+        echo ""
+        print_info "现在可以在任何位置使用以下命令:"
+        echo "  claude2api status   # 查看服务状态"
+        echo "  claude2api stop     # 停止服务"
+        echo "  claude2api update   # 更新项目"
+        echo "  claude2api help     # 查看帮助"
+        return 0
+    else
+        print_error "全局命令安装失败"
+        return 1
+    fi
+}
+
 # 停止服务
 stop_service() {
     print_info "正在停止 Claude2API 服务..."
@@ -614,6 +741,8 @@ show_usage() {
     docker          使用 Docker 部署（推荐，无需安装 Go）
     compose         使用 Docker Compose 部署
     direct          从源码部署（需要 Go 1.23+）
+    update          更新项目到最新版本
+    install         安装全局命令（可在任何位置使用 claude2api）
     stop            停止所有运行中的服务
     status          显示服务状态
     setup           仅设置环境配置
@@ -623,11 +752,18 @@ show_usage() {
     $0 docker       # 使用 Docker 部署
     $0 compose      # 使用 Docker Compose 部署
     $0 direct       # 从源码构建并部署
+    $0 update       # 更新项目并重新部署
+    $0 install      # 安装全局命令
     $0 stop         # 停止所有服务
     $0 status       # 检查服务状态
 
 远程一键部署:
     bash <(curl -fsSL https://raw.githubusercontent.com/wosa1402/claude2api/main/deploy.sh) docker
+
+安装全局命令后:
+    claude2api status   # 查看服务状态
+    claude2api update   # 更新项目
+    claude2api stop     # 停止服务
 
 EOF
 }
@@ -670,6 +806,12 @@ main() {
             check_prerequisites go true
             setup_env
             deploy_direct
+            ;;
+        update)
+            update_project
+            ;;
+        install)
+            install_global_command
             ;;
         stop)
             stop_service
@@ -750,7 +892,9 @@ main() {
 
             echo "4) 停止服务"
             echo "5) 显示状态"
-            echo "6) 退出"
+            echo "6) 更新项目"
+            echo "7) 安装全局命令"
+            echo "8) 退出"
             echo ""
 
             # 给出智能建议
@@ -763,7 +907,7 @@ main() {
             fi
             echo ""
 
-            read -p "请输入您的选择 [1-6]: " choice
+            read -p "请输入您的选择 [1-8]: " choice
 
             case $choice in
                 1)
@@ -803,6 +947,12 @@ main() {
                     show_status
                     ;;
                 6)
+                    update_project
+                    ;;
+                7)
+                    install_global_command
+                    ;;
+                8)
                     print_info "退出脚本"
                     exit 0
                     ;;
