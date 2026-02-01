@@ -85,9 +85,113 @@ clone_repository() {
     print_success "项目克隆完成"
 }
 
-# 检查前置条件
+# 自动安装 Git
+auto_install_git() {
+    print_info "正在自动安装 Git..."
+
+    if command_exists apt-get; then
+        apt-get update && apt-get install -y git
+    elif command_exists yum; then
+        yum install -y git
+    elif command_exists dnf; then
+        dnf install -y git
+    else
+        print_error "无法识别的包管理器，请手动安装 Git"
+        return 1
+    fi
+
+    if command_exists git; then
+        print_success "Git 安装成功"
+        return 0
+    else
+        print_error "Git 安装失败"
+        return 1
+    fi
+}
+
+# 自动安装 Docker
+auto_install_docker() {
+    print_info "正在自动安装 Docker..."
+    print_warning "这可能需要几分钟时间..."
+
+    if curl -fsSL https://get.docker.com | bash; then
+        print_success "Docker 安装成功"
+
+        # 启动 Docker 服务
+        if command_exists systemctl; then
+            systemctl start docker
+            systemctl enable docker
+            print_info "Docker 服务已启动并设置为开机自启"
+        fi
+
+        return 0
+    else
+        print_error "Docker 安装失败"
+        return 1
+    fi
+}
+
+# 自动安装 Go
+auto_install_go() {
+    print_info "正在自动安装 Go 1.23..."
+    print_warning "这可能需要几分钟时间..."
+
+    local GO_VERSION="1.23.0"
+    local ARCH=$(uname -m)
+
+    # 确定架构
+    case $ARCH in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            print_error "不支持的架构: $ARCH"
+            return 1
+            ;;
+    esac
+
+    local GO_TAR="go${GO_VERSION}.linux-${ARCH}.tar.gz"
+    local GO_URL="https://go.dev/dl/${GO_TAR}"
+
+    # 下载 Go
+    print_info "正在下载 Go ${GO_VERSION}..."
+    if ! wget -q --show-progress "$GO_URL" -O "/tmp/${GO_TAR}"; then
+        print_error "下载失败"
+        return 1
+    fi
+
+    # 删除旧版本
+    rm -rf /usr/local/go
+
+    # 解压安装
+    print_info "正在安装..."
+    tar -C /usr/local -xzf "/tmp/${GO_TAR}"
+    rm "/tmp/${GO_TAR}"
+
+    # 设置环境变量
+    if ! grep -q "/usr/local/go/bin" ~/.bashrc; then
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+    fi
+
+    export PATH=$PATH:/usr/local/go/bin
+
+    if command_exists go; then
+        print_success "Go $(go version | awk '{print $3}') 安装成功"
+        return 0
+    else
+        print_error "Go 安装失败"
+        return 1
+    fi
+}
+
+# 检查前置条件（带自动安装选项）
 check_prerequisites() {
     local check_type="${1:-all}"
+    local auto_install="${2:-false}"
+
     print_info "正在检查前置条件..."
 
     local missing_deps=()
@@ -106,11 +210,49 @@ check_prerequisites() {
         fi
     fi
 
+    # Go 只在源码部署时检查
+    if [[ "$check_type" == "go" ]]; then
+        if ! command_exists go; then
+            missing_deps+=("go")
+        else
+            GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
+            REQUIRED_VERSION="1.23"
+            if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$GO_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
+                missing_deps+=("go")
+            fi
+        fi
+    fi
+
     if [ ${#missing_deps[@]} -ne 0 ]; then
         print_error "缺少必需的依赖: ${missing_deps[*]}"
-        print_info "请先安装缺少的依赖。"
         echo ""
-        print_info "安装提示:"
+
+        # 如果启用自动安装，询问用户
+        if [[ "$auto_install" == "true" ]]; then
+            read -p "是否自动安装缺失的依赖? [Y/n]: " confirm
+            confirm=${confirm:-Y}
+
+            if [[ $confirm == [yY] ]]; then
+                for dep in "${missing_deps[@]}"; do
+                    case $dep in
+                        git)
+                            auto_install_git || exit 1
+                            ;;
+                        docker)
+                            auto_install_docker || exit 1
+                            ;;
+                        go)
+                            auto_install_go || exit 1
+                            ;;
+                    esac
+                done
+                print_success "所有依赖安装完成"
+                return 0
+            fi
+        fi
+
+        # 手动安装提示
+        print_info "手动安装提示:"
         for dep in "${missing_deps[@]}"; do
             case $dep in
                 git)
@@ -118,6 +260,9 @@ check_prerequisites() {
                     ;;
                 docker)
                     echo "  Docker: curl -fsSL https://get.docker.com | bash"
+                    ;;
+                go)
+                    echo "  Go: wget https://go.dev/dl/go1.23.0.linux-amd64.tar.gz"
                     ;;
             esac
         done
@@ -401,12 +546,12 @@ main() {
                 ;;
             docker|compose)
                 # Docker 相关部署需要克隆仓库
-                check_prerequisites git
+                check_prerequisites git true
                 clone_repository
                 ;;
             direct)
                 # 直接部署需要克隆仓库
-                check_prerequisites git
+                check_prerequisites git true
                 clone_repository
                 ;;
         esac
@@ -414,16 +559,17 @@ main() {
 
     case "${1:-}" in
         docker)
-            check_prerequisites docker
+            check_prerequisites docker true
             setup_env
             deploy_docker
             ;;
         compose)
-            check_prerequisites docker
+            check_prerequisites docker true
             setup_env
             deploy_docker_compose
             ;;
         direct)
+            check_prerequisites go true
             setup_env
             deploy_direct
             ;;
@@ -525,29 +671,30 @@ main() {
                 1)
                     # 如果不在项目目录，先克隆
                     if ! check_in_project_dir; then
-                        check_prerequisites git
+                        check_prerequisites git true
                         clone_repository
                     fi
-                    check_prerequisites docker
+                    check_prerequisites docker true
                     setup_env
                     deploy_docker
                     ;;
                 2)
                     # 如果不在项目目录，先克隆
                     if ! check_in_project_dir; then
-                        check_prerequisites git
+                        check_prerequisites git true
                         clone_repository
                     fi
-                    check_prerequisites docker
+                    check_prerequisites docker true
                     setup_env
                     deploy_docker_compose
                     ;;
                 3)
                     # 如果不在项目目录，先克隆
                     if ! check_in_project_dir; then
-                        check_prerequisites git
+                        check_prerequisites git true
                         clone_repository
                     fi
+                    check_prerequisites go true
                     setup_env
                     deploy_direct
                     ;;
