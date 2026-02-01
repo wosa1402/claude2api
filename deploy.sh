@@ -696,6 +696,136 @@ stop_service() {
     fi
 }
 
+# 卸载服务
+uninstall_service() {
+    print_warning "开始卸载 Claude2API..."
+    echo ""
+
+    print_info "此操作将:"
+    echo "  1. 停止所有运行中的服务"
+    echo "  2. 删除 systemd 服务配置"
+    echo "  3. 删除 Docker 容器和镜像"
+    echo "  4. 删除全局命令"
+    echo "  5. 可选择是否删除项目文件和配置"
+    echo ""
+
+    read -p "确定要继续卸载吗? [y/N]: " confirm
+    confirm=${confirm:-N}
+
+    if [[ ! $confirm == [yY] ]]; then
+        print_info "取消卸载"
+        return 0
+    fi
+
+    echo ""
+    local uninstalled=false
+
+    # 1. 停止所有服务
+    print_info "步骤 1/5: 停止所有服务..."
+    stop_service
+    echo ""
+
+    # 2. 删除 systemd 服务
+    print_info "步骤 2/5: 删除 systemd 服务配置..."
+    if command_exists systemctl && systemctl list-unit-files | grep -q claude2api.service; then
+        if [ "$(whoami)" = "root" ]; then
+            systemctl disable claude2api 2>/dev/null || true
+            rm -f /etc/systemd/system/claude2api.service
+            systemctl daemon-reload
+        else
+            sudo systemctl disable claude2api 2>/dev/null || true
+            sudo rm -f /etc/systemd/system/claude2api.service
+            sudo systemctl daemon-reload
+        fi
+        print_success "systemd 服务已删除"
+        uninstalled=true
+    else
+        print_info "未找到 systemd 服务"
+    fi
+    echo ""
+
+    # 3. 删除 Docker 容器和镜像
+    print_info "步骤 3/5: 删除 Docker 容器和镜像..."
+
+    # 删除容器
+    if docker ps -a --format '{{.Names}}' | grep -q "^claude2api$"; then
+        docker rm -f claude2api 2>/dev/null || true
+        print_success "Docker 容器已删除"
+        uninstalled=true
+    fi
+
+    # 询问是否删除镜像
+    if docker images | grep -q "claude2api"; then
+        read -p "是否删除 Docker 镜像? [y/N]: " remove_image
+        remove_image=${remove_image:-N}
+        if [[ $remove_image == [yY] ]]; then
+            docker rmi -f claude2api:latest 2>/dev/null || true
+            print_success "Docker 镜像已删除"
+            uninstalled=true
+        fi
+    fi
+    echo ""
+
+    # 4. 删除全局命令
+    print_info "步骤 4/5: 删除全局命令..."
+    if [ -L /usr/local/bin/claude2api ]; then
+        if [ "$(whoami)" = "root" ]; then
+            rm -f /usr/local/bin/claude2api
+        else
+            sudo rm -f /usr/local/bin/claude2api
+        fi
+        print_success "全局命令已删除"
+        uninstalled=true
+    else
+        print_info "未找到全局命令"
+    fi
+    echo ""
+
+    # 5. 询问是否删除项目文件
+    print_info "步骤 5/5: 清理项目文件..."
+
+    read -p "是否删除项目文件（包括 .env 配置）? [y/N]: " remove_files
+    remove_files=${remove_files:-N}
+
+    if [[ $remove_files == [yY] ]]; then
+        local current_dir=$(pwd)
+
+        # 检查是否在项目目录
+        if check_in_project_dir; then
+            print_warning "准备删除目录: $current_dir"
+            read -p "最后确认，真的要删除吗? [y/N]: " final_confirm
+            final_confirm=${final_confirm:-N}
+
+            if [[ $final_confirm == [yY] ]]; then
+                cd ..
+                rm -rf "$current_dir"
+                print_success "项目文件已删除"
+                uninstalled=true
+            else
+                print_info "保留项目文件"
+            fi
+        else
+            print_warning "未在项目目录中，跳过文件删除"
+        fi
+    else
+        print_info "保留项目文件和配置"
+    fi
+
+    echo ""
+    if [ "$uninstalled" = true ]; then
+        print_success "🎉 卸载完成！"
+        if [[ $remove_files == [yY] ]] && [[ $final_confirm == [yY] ]]; then
+            echo ""
+            print_info "项目已完全卸载"
+        else
+            echo ""
+            print_info "项目文件保留在原位置，可随时重新部署"
+        fi
+    else
+        print_info "未找到任何已安装的组件"
+    fi
+}
+
 # 显示状态
 show_status() {
     print_info "正在检查服务状态..."
@@ -754,6 +884,7 @@ show_usage() {
     install         安装全局命令（可在任何位置使用 claude2api）
     stop            停止所有运行中的服务
     status          显示服务状态
+    uninstall       卸载服务（删除配置、容器、镜像等）
     setup           仅设置环境配置
     help            显示此帮助信息
 
@@ -765,14 +896,16 @@ show_usage() {
     $0 install      # 安装全局命令
     $0 stop         # 停止所有服务
     $0 status       # 检查服务状态
+    $0 uninstall    # 完全卸载服务
 
 远程一键部署:
     bash <(curl -fsSL https://raw.githubusercontent.com/wosa1402/claude2api/main/deploy.sh) docker
 
 安装全局命令后:
-    claude2api status   # 查看服务状态
-    claude2api update   # 更新项目
-    claude2api stop     # 停止服务
+    claude2api status      # 查看服务状态
+    claude2api update      # 更新项目
+    claude2api stop        # 停止服务
+    claude2api uninstall   # 卸载服务
 
 EOF
 }
@@ -784,7 +917,7 @@ main() {
     # 如果不在项目目录中且不是 help/status/stop 命令，则需要克隆仓库
     if ! check_in_project_dir; then
         case "${1:-}" in
-            help|--help|-h|status|stop|"")
+            help|--help|-h|status|stop|uninstall|"")
                 # 这些命令不需要项目文件
                 ;;
             docker|compose)
@@ -827,6 +960,9 @@ main() {
             ;;
         status)
             show_status
+            ;;
+        uninstall)
+            uninstall_service
             ;;
         setup)
             setup_env
@@ -903,7 +1039,8 @@ main() {
             echo "5) 显示状态"
             echo "6) 更新项目"
             echo "7) 安装全局命令"
-            echo "8) 退出"
+            echo "8) 卸载服务"
+            echo "9) 退出"
             echo ""
 
             # 给出智能建议
@@ -916,7 +1053,7 @@ main() {
             fi
             echo ""
 
-            read -p "请输入您的选择 [1-8]: " choice
+            read -p "请输入您的选择 [1-9]: " choice
 
             case $choice in
                 1)
@@ -962,6 +1099,9 @@ main() {
                     install_global_command
                     ;;
                 8)
+                    uninstall_service
+                    ;;
+                9)
                     print_info "退出脚本"
                     exit 0
                     ;;
