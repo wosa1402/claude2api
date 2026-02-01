@@ -431,9 +431,82 @@ deploy_direct() {
     echo ""
     print_success "🎉 构建完成！"
     echo ""
-    print_info "启动服务: ./claude2api"
-    print_info "后台运行: nohup ./claude2api > claude2api.log 2>&1 &"
-    print_warning "提示: 启动前请确保已配置 .env 文件"
+
+    # 询问是否配置为 systemd 服务
+    if command_exists systemctl; then
+        read -p "是否配置为 systemd 服务（推荐，开机自启）? [Y/n]: " setup_systemd
+        setup_systemd=${setup_systemd:-Y}
+
+        if [[ $setup_systemd == [yY] ]]; then
+            setup_systemd_service
+        else
+            print_info "手动启动服务: ./claude2api"
+            print_info "后台运行: nohup ./claude2api > claude2api.log 2>&1 &"
+            print_warning "提示: 启动前请确保已配置 .env 文件"
+        fi
+    else
+        print_warning "未检测到 systemd，将使用传统方式运行"
+        print_info "手动启动服务: ./claude2api"
+        print_info "后台运行: nohup ./claude2api > claude2api.log 2>&1 &"
+        print_warning "提示: 启动前请确保已配置 .env 文件"
+    fi
+}
+
+# 配置 systemd 服务
+setup_systemd_service() {
+    local current_dir=$(pwd)
+    local current_user=$(whoami)
+
+    print_info "正在配置 systemd 服务..."
+
+    # 创建 systemd 服务文件
+    cat > /tmp/claude2api.service << EOF
+[Unit]
+Description=Claude2API Service
+After=network.target
+
+[Service]
+Type=simple
+User=$current_user
+WorkingDirectory=$current_dir
+ExecStart=$current_dir/claude2api
+Restart=always
+RestartSec=5
+StandardOutput=append:$current_dir/claude2api.log
+StandardError=append:$current_dir/claude2api.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # 复制到 systemd 目录
+    if [ "$current_user" = "root" ]; then
+        mv /tmp/claude2api.service /etc/systemd/system/claude2api.service
+    else
+        print_info "需要 root 权限安装 systemd 服务"
+        sudo mv /tmp/claude2api.service /etc/systemd/system/claude2api.service
+    fi
+
+    # 重载 systemd 配置
+    if [ "$current_user" = "root" ]; then
+        systemctl daemon-reload
+        systemctl enable claude2api
+        systemctl start claude2api
+    else
+        sudo systemctl daemon-reload
+        sudo systemctl enable claude2api
+        sudo systemctl start claude2api
+    fi
+
+    echo ""
+    print_success "🎉 systemd 服务配置完成！"
+    echo ""
+    print_info "服务地址: http://0.0.0.0:8080"
+    print_info "查看状态: systemctl status claude2api"
+    print_info "查看日志: journalctl -u claude2api -f"
+    print_info "停止服务: systemctl stop claude2api"
+    print_info "启动服务: systemctl start claude2api"
+    print_info "重启服务: systemctl restart claude2api"
 }
 
 # 停止服务
@@ -443,12 +516,25 @@ stop_service() {
 
     local stopped=false
 
+    # 停止 systemd 服务
+    if command_exists systemctl && systemctl is-active --quiet claude2api; then
+        if [ "$(whoami)" = "root" ]; then
+            systemctl stop claude2api
+        else
+            sudo systemctl stop claude2api
+        fi
+        print_success "systemd 服务已停止"
+        stopped=true
+    fi
+
+    # 停止 Docker 容器
     if docker ps --format '{{.Names}}' | grep -q "^claude2api$"; then
         docker stop claude2api
         print_success "Docker 容器已停止"
         stopped=true
     fi
 
+    # 停止 Docker Compose
     if docker compose ps 2>/dev/null | grep -q claude2api; then
         if docker compose version >/dev/null 2>&1; then
             docker compose down
@@ -480,6 +566,18 @@ show_status() {
     echo ""
 
     local running=false
+
+    # systemd 服务
+    if command_exists systemctl && systemctl list-unit-files | grep -q claude2api.service; then
+        if systemctl is-active --quiet claude2api; then
+            print_success "✓ systemd 服务正在运行"
+            systemctl status claude2api --no-pager | head -n 10
+            running=true
+        else
+            print_info "✗ systemd 服务未运行（已安装但未启动）"
+        fi
+        echo ""
+    fi
 
     # Docker 容器
     if docker ps --format '{{.Names}}' | grep -q "^claude2api$"; then
