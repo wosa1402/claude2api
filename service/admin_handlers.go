@@ -18,6 +18,10 @@ type adminStatusResp struct {
 		LastAt      string  `json:"lastAt"`
 		LastOkAt    string  `json:"lastOkAt"`
 		LastError   string  `json:"lastError"`
+		EgressIPv4  string  `json:"egressIPv4"`
+		EgressIPv6  string  `json:"egressIPv6"`
+		EgressAt    string  `json:"egressAt"`
+		EgressError string  `json:"egressError"`
 	} `json:"global"`
 	Accounts []adminAccountResp `json:"accounts"`
 }
@@ -66,6 +70,13 @@ func AdminStatusHandler(c *gin.Context) {
 		resp.Global.LastOkAt = g.LastOkAt.Format(time.RFC3339)
 	}
 	resp.Global.LastError = g.LastError
+	eg := getEgressInfo()
+	resp.Global.EgressIPv4 = eg.IPv4
+	resp.Global.EgressIPv6 = eg.IPv6
+	if !eg.CheckedAt.IsZero() {
+		resp.Global.EgressAt = eg.CheckedAt.Format(time.RFC3339)
+	}
+	resp.Global.EgressError = eg.Err
 
 	config.ConfigInstance.RwMutx.RLock()
 	sessions := make([]config.SessionInfo, len(config.ConfigInstance.Sessions))

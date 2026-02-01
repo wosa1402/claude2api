@@ -537,6 +537,7 @@
                 <div class="hint" id="kpiEnabled">启用：--</div>
               </div>
             </div>
+            <div class="hint" id="egressInfo" style="margin-top: 10px">出口IP：--</div>
           </div>
         </section>
 
@@ -667,6 +668,17 @@
           "启用：" +
           fmtInt(accounts.filter((a) => a.enabled).length) +
           `（low: ${lowEnabled}/${low.length}，high: ${highEnabled}/${high.length}）`;
+
+        const v4 = g.egressIPv4 || "";
+        const v6 = g.egressIPv6 || "";
+        const at = g.egressAt ? fmtTime(g.egressAt) : "--";
+        if (v4 || v6) {
+          $("egressInfo").textContent = `出口IP：v4=${v4 || "无"}，v6=${v6 || "无"}（${at}）`;
+        } else if (g.egressError) {
+          $("egressInfo").textContent = `出口IP：获取失败（${safeStr(g.egressError)}）`;
+        } else {
+          $("egressInfo").textContent = "出口IP：--";
+        }
 
         const wrap = $("accounts");
         wrap.innerHTML = `
