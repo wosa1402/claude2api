@@ -272,45 +272,27 @@ check_prerequisites() {
     print_success "前置条件检查通过"
 }
 
-# 创建 .env 文件（如果不存在）
-setup_env() {
-    print_info "正在设置环境配置..."
+# 检查 .env 文件（Docker 部署必需）
+check_env_required() {
+    print_info "正在检查环境配置..."
 
     if [ ! -f .env ]; then
-        if [ -f .env.example ]; then
-            cp .env.example .env
-            print_success "已从 .env.example 创建 .env 文件"
-            print_warning "请编辑 .env 文件配置您的 Claude Session Key"
-            echo ""
-            read -p "是否现在编辑 .env 文件? [y/N]: " edit_now
-            if [[ $edit_now == [yY] ]]; then
-                ${EDITOR:-vi} .env
-            else
-                print_warning "请稍后手动编辑 .env 文件再启动服务"
-            fi
-        else
-            print_warning "未找到 .env.example，正在创建基础 .env 文件..."
-            cat > .env << 'EOF'
-SESSIONS=sk-ant-sid01-xxxx,sk-ant-sid01-yyyy
-ADDRESS=0.0.0.0:8080
-APIKEY=123
-CHAT_DELETE=true
-MAX_CHAT_HISTORY_LENGTH=10000
-NO_ROLE_PREFIX=false
-PROMPT_DISABLE_ARTIFACTS=false
-ENABLE_MIRROR_API=false
-MIRROR_API_PREFIX=/mirror
-EOF
-            print_success "已创建基础 .env 文件"
-            print_warning "请编辑 .env 文件，填入您的 Claude Session Key"
-            echo ""
-            read -p "是否现在编辑 .env 文件? [y/N]: " edit_now
-            if [[ $edit_now == [yY] ]]; then
-                ${EDITOR:-vi} .env
-            else
-                print_warning "请稍后手动编辑 .env 文件: vi .env 或 nano .env"
-            fi
-        fi
+        print_error "未找到 .env 配置文件"
+        echo ""
+        print_info "请手动创建 .env 文件:"
+        echo "  cp .env.example .env"
+        echo "  vi .env"
+        exit 1
+    else
+        print_success ".env 文件已存在"
+    fi
+}
+
+# 检查 .env 文件（源码部署可选）
+check_env_optional() {
+    if [ ! -f .env ]; then
+        print_warning "未找到 .env 配置文件"
+        print_info "可通过管理页面或 config.yaml 进行配置"
     else
         print_success ".env 文件已存在"
     fi
@@ -875,7 +857,6 @@ show_usage() {
     stop            停止所有运行中的服务
     status          显示服务状态
     uninstall       卸载服务（删除配置、容器、镜像等）
-    setup           仅设置环境配置
     help            显示此帮助信息
 
 示例:
@@ -926,17 +907,17 @@ main() {
     case "${1:-}" in
         docker)
             check_prerequisites docker true
-            setup_env
+            check_env_required
             deploy_docker
             ;;
         compose)
             check_prerequisites docker true
-            setup_env
+            check_env_required
             deploy_docker_compose
             ;;
         direct)
             check_prerequisites go true
-            setup_env
+            check_env_optional
             deploy_direct
             ;;
         update)
@@ -953,9 +934,6 @@ main() {
             ;;
         uninstall)
             uninstall_service
-            ;;
-        setup)
-            setup_env
             ;;
         help|--help|-h)
             show_usage
@@ -1053,7 +1031,7 @@ main() {
                         clone_repository
                     fi
                     check_prerequisites docker true
-                    setup_env
+                    check_env_required
                     deploy_docker
                     ;;
                 2)
@@ -1063,7 +1041,7 @@ main() {
                         clone_repository
                     fi
                     check_prerequisites docker true
-                    setup_env
+                    check_env_required
                     deploy_docker_compose
                     ;;
                 3)
@@ -1073,7 +1051,7 @@ main() {
                         clone_repository
                     fi
                     check_prerequisites go true
-                    setup_env
+                    check_env_optional
                     deploy_direct
                     ;;
                 4)
