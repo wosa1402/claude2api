@@ -440,16 +440,85 @@ main() {
             show_usage
             ;;
         *)
-            # 交互式菜单 - 先显示选项，再根据选择检查依赖
+            # 交互式菜单 - 自动检测环境并智能推荐
+            echo ""
+            print_info "正在检测您的系统环境..."
+            echo ""
+
+            # 检测可用的部署方式
+            local has_docker=false
+            local has_docker_compose=false
+            local has_go=false
+            local go_version_ok=false
+
+            if command_exists docker; then
+                has_docker=true
+                echo -e "${GREEN}✓${NC} Docker 已安装"
+            else
+                echo -e "${RED}✗${NC} Docker 未安装"
+            fi
+
+            if command_exists docker-compose || docker compose version >/dev/null 2>&1; then
+                has_docker_compose=true
+                echo -e "${GREEN}✓${NC} Docker Compose 已安装"
+            else
+                echo -e "${RED}✗${NC} Docker Compose 未安装"
+            fi
+
+            if command_exists go; then
+                has_go=true
+                GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
+                REQUIRED_VERSION="1.23"
+                if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$GO_VERSION" | sort -V | head -n1)" = "$REQUIRED_VERSION" ]; then
+                    go_version_ok=true
+                    echo -e "${GREEN}✓${NC} Go $GO_VERSION 已安装"
+                else
+                    echo -e "${YELLOW}⚠${NC} Go $GO_VERSION 已安装（需要 1.23+）"
+                fi
+            else
+                echo -e "${RED}✗${NC} Go 未安装"
+            fi
+
+            echo ""
             print_info "请选择一种部署方式:"
             echo ""
-            echo "1) Docker (推荐 - 无需安装 Go)"
-            echo "2) Docker Compose"
-            echo "3) 直接部署 (从源码 - 需要 Go 1.23+)"
+
+            # 根据环境智能显示选项
+            if $has_docker; then
+                echo -e "1) Docker ${GREEN}(推荐 - 已检测到)${NC}"
+            else
+                echo "1) Docker (需要安装)"
+            fi
+
+            if $has_docker_compose; then
+                echo -e "2) Docker Compose ${GREEN}(已检测到)${NC}"
+            else
+                echo "2) Docker Compose (需要安装)"
+            fi
+
+            if $go_version_ok; then
+                echo -e "3) 直接部署 ${GREEN}(源码 - Go 已就绪)${NC}"
+            elif $has_go; then
+                echo "3) 直接部署 (源码 - 需要升级 Go)"
+            else
+                echo "3) 直接部署 (源码 - 需要安装 Go 1.23+)"
+            fi
+
             echo "4) 停止服务"
             echo "5) 显示状态"
             echo "6) 退出"
             echo ""
+
+            # 给出智能建议
+            if $has_docker; then
+                print_success "建议: 选择 Docker 部署（选项 1）- 最简单快捷"
+            elif $go_version_ok; then
+                print_success "建议: 选择源码部署（选项 3）- Go 环境已就绪"
+            else
+                print_warning "提示: 建议先安装 Docker 或 Go 环境"
+            fi
+            echo ""
+
             read -p "请输入您的选择 [1-6]: " choice
 
             case $choice in
