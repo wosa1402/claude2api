@@ -92,3 +92,31 @@ func getEgressInfo() egressInfo {
 	egressCache = info
 	return info
 }
+
+// FetchEgressIPOnce 单次获取出口 IP（用于记录每次请求的实际出口）。
+// family: "ipv4" / "ipv6" / 其他值则自动选择（优先 v4）
+// 返回 IP 字符串，获取失败返回空字符串。
+func FetchEgressIPOnce(family string) string {
+	family = strings.ToLower(strings.TrimSpace(family))
+
+	// 根据 family 选择检测服务
+	var url string
+	switch family {
+	case "ipv6", "6":
+		url = "https://api6.ipify.org" // 纯 IPv6
+	case "ipv4", "4":
+		url = "https://api.ipify.org" // 纯 IPv4
+	default:
+		// auto: 使用 api.ipify.org（会根据系统网络自动选择）
+		url = "https://api.ipify.org"
+	}
+
+	v, err := fetchText(url, 3*time.Second)
+	if err != nil {
+		return ""
+	}
+	if isIP(v) {
+		return v
+	}
+	return ""
+}

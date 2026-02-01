@@ -551,6 +551,13 @@
               <button class="btn sm ghost" id="btnSaveIPFamily" type="button">保存</button>
               <div class="hint" id="ipFamilyHint" style="margin:0">--</div>
             </div>
+            <div style="margin-top: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer">
+                <input type="checkbox" id="recordEgressIPChk" style="width:16px; height:16px">
+                <span class="hint" style="margin:0">记录每次请求的出口IP（用于调试，会增加延迟）</span>
+              </label>
+              <button class="btn sm ghost" id="btnSaveRecordEgress" type="button">保存</button>
+            </div>
           </div>
         </section>
 
@@ -703,6 +710,8 @@
         $("ipFamilySel").value = (fam === "ipv4" || fam === "ipv6") ? fam : "auto";
         $("ipFamilyHint").textContent = fam === "auto" ? "当前：自动" : ("当前：" + fam.toUpperCase());
 
+        $("recordEgressIPChk").checked = !!g.recordEgressIP;
+
         const wrap = $("accounts");
         wrap.innerHTML = `
           <div class="pool-grid">
@@ -766,6 +775,11 @@
                   <span>
                     连接：${a.lastRemoteIP ? (ipVer(a.lastRemoteIP) + " " + safeStr(a.lastRemoteIP)) : "--"}${
                       a.lastRemoteAt ? "（" + fmtTime(a.lastRemoteAt) + "）" : ""
+                    }
+                  </span>
+                  <span>
+                    出口：${a.lastEgressIP ? (ipVer(a.lastEgressIP) + " " + safeStr(a.lastEgressIP)) : "--"}${
+                      a.lastEgressAt ? "（" + fmtTime(a.lastEgressAt) + "）" : ""
                     }
                   </span>
                   <span>最近：${fmtTime(a.lastAt)}</span>
@@ -1061,6 +1075,32 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ family }),
+          });
+          if (res.status === 401) return (location.href = "/admin/login");
+          if (res.status === 403) return (location.href = "/admin/setup");
+          let body = null;
+          try {
+            body = await res.json();
+          } catch (_) {}
+          if (!res.ok) throw new Error((body && body.error) ? body.error : "HTTP " + res.status);
+          showToast(body && body.savedPath ? ("已保存到 " + body.savedPath) : "已保存");
+          await loadStatus();
+        } catch (e) {
+          showToast("保存失败：" + e.message);
+        } finally {
+          setLoading(btn, false);
+        }
+      });
+
+      $("btnSaveRecordEgress").addEventListener("click", async () => {
+        const btn = $("btnSaveRecordEgress");
+        const enabled = $("recordEgressIPChk").checked;
+        setLoading(btn, true, "保存中…");
+        try {
+          const res = await fetch("/admin/network/record-egress", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
           });
           if (res.status === 401) return (location.href = "/admin/login");
           if (res.status === 403) return (location.href = "/admin/setup");

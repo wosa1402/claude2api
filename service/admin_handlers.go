@@ -12,17 +12,18 @@ import (
 
 type adminStatusResp struct {
 	Global struct {
-		OK            int     `json:"ok"`
-		Fail          int     `json:"fail"`
-		SuccessRate   float64 `json:"successRate"`
-		LastAt        string  `json:"lastAt"`
-		LastOkAt      string  `json:"lastOkAt"`
-		LastError     string  `json:"lastError"`
-		EgressIPv4    string  `json:"egressIPv4"`
-		EgressIPv6    string  `json:"egressIPv6"`
-		EgressAt      string  `json:"egressAt"`
-		EgressError   string  `json:"egressError"`
-		ForceIPFamily string  `json:"forceIPFamily"`
+		OK              int     `json:"ok"`
+		Fail            int     `json:"fail"`
+		SuccessRate     float64 `json:"successRate"`
+		LastAt          string  `json:"lastAt"`
+		LastOkAt        string  `json:"lastOkAt"`
+		LastError       string  `json:"lastError"`
+		EgressIPv4      string  `json:"egressIPv4"`
+		EgressIPv6      string  `json:"egressIPv6"`
+		EgressAt        string  `json:"egressAt"`
+		EgressError     string  `json:"egressError"`
+		ForceIPFamily   string  `json:"forceIPFamily"`
+		RecordEgressIP  bool    `json:"recordEgressIP"`
 	} `json:"global"`
 	Accounts []adminAccountResp `json:"accounts"`
 }
@@ -51,6 +52,8 @@ type adminAccountResp struct {
 	LastAt                string        `json:"lastAt"`
 	LastRemoteIP          string        `json:"lastRemoteIP"`
 	LastRemoteAt          string        `json:"lastRemoteAt"`
+	LastEgressIP          string        `json:"lastEgressIP"`
+	LastEgressAt          string        `json:"lastEgressAt"`
 }
 
 func AdminStatusHandler(c *gin.Context) {
@@ -82,6 +85,7 @@ func AdminStatusHandler(c *gin.Context) {
 	resp.Global.EgressError = eg.Err
 	config.ConfigInstance.RwMutx.RLock()
 	resp.Global.ForceIPFamily = strings.TrimSpace(config.ConfigInstance.ForceIPFamily)
+	resp.Global.RecordEgressIP = config.ConfigInstance.RecordEgressIP
 	config.ConfigInstance.RwMutx.RUnlock()
 	if resp.Global.ForceIPFamily == "" {
 		resp.Global.ForceIPFamily = "auto"
@@ -124,6 +128,10 @@ func AdminStatusHandler(c *gin.Context) {
 			a.LastRemoteIP = st.LastRemoteIP
 			if !st.LastRemoteAt.IsZero() {
 				a.LastRemoteAt = st.LastRemoteAt.Format(time.RFC3339)
+			}
+			a.LastEgressIP = st.LastEgressIP
+			if !st.LastEgressAt.IsZero() {
+				a.LastEgressAt = st.LastEgressAt.Format(time.RFC3339)
 			}
 			a.OK = st.OK
 			a.Fail = st.Fail

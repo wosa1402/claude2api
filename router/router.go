@@ -22,6 +22,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/admin/logout", service.AdminLogoutHandler)
 	r.GET("/admin/status", service.AdminStatusHandler)
 	r.POST("/admin/network/ip-family", service.AdminSetIPFamilyHandler)
+	r.POST("/admin/network/record-egress", service.AdminSetRecordEgressHandler)
 	r.POST("/admin/sessions", service.AdminAddSessionHandler)
 	r.DELETE("/admin/sessions/:id", service.AdminDeleteSessionHandler)
 	r.POST("/admin/sessions/:id/pool", service.AdminSetSessionPoolHandler)

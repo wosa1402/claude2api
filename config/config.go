@@ -45,7 +45,9 @@ type Config struct {
 	AdminKey          string        `yaml:"adminKey"`
 	AdminPasswordHash string        `yaml:"adminPasswordHash"`
 	// 出口协议族控制：auto / ipv4 / ipv6
-	ForceIPFamily          string       `yaml:"forceIPFamily"`
+	ForceIPFamily string `yaml:"forceIPFamily"`
+	// 是否记录每次请求的出口 IP（用于调试，会增加延迟）
+	RecordEgressIP bool `yaml:"recordEgressIP"`
 	Proxy                  string       `yaml:"proxy"`
 	ChatDelete             bool         `yaml:"chatDelete"`
 	MaxChatHistoryLength   int          `yaml:"maxChatHistoryLength"`

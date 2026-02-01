@@ -43,7 +43,7 @@ func classifyAskModel() string {
 
 func runSessionAutoClassify(s config.SessionInfo) (askedModel, reportedModel, suggestedPool, raw, errType, errMsg string) {
 	askedModel = classifyAskModel()
-	prompt := "请只输出你当前的模型ID（例如 claude-sonnet-4-20250514 或 claude-sonnet-4-5-20250929），不要输出其他内容。"
+	prompt := "Please output only your current model ID (e.g. claude-sonnet-4-20250514 or claude-sonnet-4-5-20250929), nothing else."
 
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy

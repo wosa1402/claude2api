@@ -57,6 +57,8 @@ type accountStat struct {
 	LastError     string
 	LastRemoteIP  string
 	LastRemoteAt  time.Time
+	LastEgressIP  string // 实际出口 IP（需开启 RecordEgressIP）
+	LastEgressAt  time.Time
 }
 
 type globalStat struct {
@@ -93,7 +95,7 @@ func getOrInitSessionStat(sessionKey string) *accountStat {
 	return ns
 }
 
-func recordAttempt(session config.SessionInfo, ok bool, errType string, remoteIP string, remoteAt time.Time) {
+func recordAttempt(session config.SessionInfo, ok bool, errType string, remoteIP string, remoteAt time.Time, egressIP string, egressAt time.Time) {
 	statsMu.Lock()
 	defer statsMu.Unlock()
 
@@ -103,6 +105,10 @@ func recordAttempt(session config.SessionInfo, ok bool, errType string, remoteIP
 	if remoteIP != "" {
 		s.LastRemoteIP = remoteIP
 		s.LastRemoteAt = remoteAt
+	}
+	if egressIP != "" {
+		s.LastEgressIP = egressIP
+		s.LastEgressAt = egressAt
 	}
 	if ok {
 		s.OK++

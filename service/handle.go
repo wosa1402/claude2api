@@ -165,8 +165,8 @@ func ChatCompletionsHandler(c *gin.Context) {
 			processor.Prompt.WriteString(processor.RootPrompt.String())
 		}
 		// Initialize client and process request
-		ok, errType, remoteIP, remoteAt := handleChatRequest(c, session, model, processor, req.Stream)
-		recordAttempt(session, ok, errType, remoteIP, remoteAt)
+		ok, errType, remoteIP, remoteAt, egressIP, egressAt := handleChatRequest(c, session, model, processor, req.Stream)
+		recordAttempt(session, ok, errType, remoteIP, remoteAt, egressIP, egressAt)
 		if ok {
 			return // Success, exit the retry loop
 		}
@@ -214,8 +214,8 @@ func MirrorChatHandler(c *gin.Context) {
 	}
 
 	// Process the request with the provided session
-	ok, errType, remoteIP, remoteAt := handleChatRequest(c, session, model, processor, req.Stream)
-	recordAttempt(session, ok, errType, remoteIP, remoteAt)
+	ok, errType, remoteIP, remoteAt, egressIP, egressAt := handleChatRequest(c, session, model, processor, req.Stream)
+	recordAttempt(session, ok, errType, remoteIP, remoteAt, egressIP, egressAt)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
 			Error: "Failed to process request",
@@ -269,13 +269,24 @@ func extractSessionFromAuthHeader(c *gin.Context) (config.SessionInfo, error) {
 	return config.SessionInfo{SessionKey: authInfo, OrgID: "", Enabled: true}, nil
 }
 
-func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string, string, time.Time) {
+func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string, string, time.Time, string, time.Time) {
 	// Initialize the Claude client
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy
 	forceIPFamily := config.ConfigInstance.ForceIPFamily
+	recordEgressIP := config.ConfigInstance.RecordEgressIP
 	config.ConfigInstance.RwMutx.RUnlock()
 	claudeClient := core.NewClient(session.SessionKey, proxy, model, forceIPFamily)
+
+	// 如果开启了出口 IP 记录，则检测一次
+	var egressIP string
+	var egressAt time.Time
+	if recordEgressIP {
+		egressIP = FetchEgressIPOnce(forceIPFamily)
+		if egressIP != "" {
+			egressAt = time.Now()
+		}
+	}
 
 	// Get org ID if not already set
 	if session.OrgID == "" {
@@ -283,7 +294,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to get org ID: %v", err))
 			remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
-			return false, classifyErr(err), remoteIP, remoteAt
+			return false, classifyErr(err), remoteIP, remoteAt, egressIP, egressAt
 		}
 		session.OrgID = orgId
 		config.ConfigInstance.SetSessionOrgID(session.SessionKey, session.OrgID)
@@ -297,7 +308,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to upload file: %v", err))
 			remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
-			return false, classifyErr(err), remoteIP, remoteAt
+			return false, classifyErr(err), remoteIP, remoteAt, egressIP, egressAt
 		}
 	}
 
@@ -313,7 +324,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 	if err != nil {
 		logger.Error(fmt.Sprintf("Failed to create conversation: %v", err))
 		remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
-		return false, classifyErr(err), remoteIP, remoteAt
+		return false, classifyErr(err), remoteIP, remoteAt, egressIP, egressAt
 	}
 
 	// Send message
@@ -321,7 +332,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 		logger.Error(fmt.Sprintf("Failed to send message: %v", err))
 		go cleanupConversation(claudeClient, conversationID, 3)
 		remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
-		return false, classifyErr(err), remoteIP, remoteAt
+		return false, classifyErr(err), remoteIP, remoteAt, egressIP, egressAt
 	}
 
 	// Clean up conversation if enabled
@@ -330,7 +341,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 	}
 
 	remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
-	return true, "", remoteIP, remoteAt
+	return true, "", remoteIP, remoteAt, egressIP, egressAt
 }
 
 func cleanupConversation(client *core.Client, conversationID string, retry int) {

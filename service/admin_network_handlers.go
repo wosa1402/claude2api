@@ -46,3 +46,30 @@ func AdminSetIPFamilyHandler(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "savedPath": path, "forceIPFamily": f})
 }
+
+type setRecordEgressReq struct {
+	Enabled bool `json:"enabled"`
+}
+
+func AdminSetRecordEgressHandler(c *gin.Context) {
+	var req setRecordEgressReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求格式错误"})
+		return
+	}
+
+	config.ConfigInstance.RwMutx.Lock()
+	prev := config.ConfigInstance.RecordEgressIP
+	config.ConfigInstance.RecordEgressIP = req.Enabled
+	config.ConfigInstance.RwMutx.Unlock()
+
+	path, err := config.PersistConfig()
+	if err != nil {
+		config.ConfigInstance.RwMutx.Lock()
+		config.ConfigInstance.RecordEgressIP = prev
+		config.ConfigInstance.RwMutx.Unlock()
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "保存配置失败：" + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "savedPath": path, "recordEgressIP": req.Enabled})
+}
