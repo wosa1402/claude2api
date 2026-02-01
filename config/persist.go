@@ -13,9 +13,18 @@ func getPersistPath() (string, error) {
 	if exists, p := configFileExists(); exists && p != "" {
 		return p, nil
 	}
+
+	// 优先使用可执行文件所在目录
+	execDir := filepath.Dir(os.Args[0])
+	if execDir != "" && execDir != "." {
+		return filepath.Join(execDir, "config.yaml"), nil
+	}
+
+	// 其次尝试获取工作目录
 	wd, err := os.Getwd()
 	if err != nil {
-		return "", fmt.Errorf("failed to get workdir: %w", err)
+		// 如果工作目录也获取失败，使用当前目录
+		return "config.yaml", nil
 	}
 	return filepath.Join(wd, "config.yaml"), nil
 }

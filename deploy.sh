@@ -459,6 +459,12 @@ setup_systemd_service() {
 
     print_info "正在配置 systemd 服务..."
 
+    # 确保工作目录存在
+    if [ ! -d "$current_dir" ]; then
+        print_error "工作目录不存在: $current_dir"
+        return 1
+    fi
+
     # 创建 systemd 服务文件
     cat > /tmp/claude2api.service << EOF
 [Unit]
@@ -474,6 +480,9 @@ Restart=always
 RestartSec=5
 StandardOutput=append:$current_dir/claude2api.log
 StandardError=append:$current_dir/claude2api.log
+
+# 环境变量保护
+Environment="PWD=$current_dir"
 
 [Install]
 WantedBy=multi-user.target
