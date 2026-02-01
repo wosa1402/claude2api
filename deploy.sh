@@ -698,36 +698,63 @@ stop_service() {
 
 # 卸载服务
 uninstall_service() {
-    print_warning "开始卸载 Claude2API..."
+    print_warning "========== 完全卸载 Claude2API =========="
     echo ""
 
-    print_info "此操作将:"
-    echo "  1. 停止所有运行中的服务"
-    echo "  2. 删除 systemd 服务配置"
-    echo "  3. 删除 Docker 容器和镜像"
-    echo "  4. 删除全局命令"
-    echo "  5. 可选择是否删除项目文件和配置"
+    print_info "此操作将完全删除:"
+    echo "  • 所有运行中的服务"
+    echo "  • systemd 服务配置"
+    echo "  • Docker 容器和镜像"
+    echo "  • 全局命令"
+    echo "  • 项目文件和配置"
     echo ""
 
-    read -p "确定要继续卸载吗? [y/N]: " confirm
-    confirm=${confirm:-N}
+    print_warning "警告: 此操作不可逆！"
+    echo ""
+    read -p "确定要完全卸载吗? 请输入 'yes' 确认: " confirm
 
-    if [[ ! $confirm == [yY] ]]; then
+    if [ "$confirm" != "yes" ]; then
         print_info "取消卸载"
         return 0
     fi
 
     echo ""
-    local uninstalled=false
+    local current_dir=$(pwd)
 
     # 1. 停止所有服务
-    print_info "步骤 1/5: 停止所有服务..."
-    stop_service
-    echo ""
+    print_info "[1/5] 停止所有服务..."
+
+    # 停止 systemd 服务
+    if command_exists systemctl && systemctl is-active --quiet claude2api 2>/dev/null; then
+        if [ "$(whoami)" = "root" ]; then
+            systemctl stop claude2api 2>/dev/null || true
+        else
+            sudo systemctl stop claude2api 2>/dev/null || true
+        fi
+        print_success "systemd 服务已停止"
+    fi
+
+    # 停止 Docker 容器
+    if command_exists docker && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^claude2api$"; then
+        docker stop claude2api 2>/dev/null || true
+        print_success "Docker 容器已停止"
+    fi
+
+    # 停止 Docker Compose
+    if command_exists docker && docker compose ps 2>/dev/null | grep -q claude2api; then
+        docker compose down 2>/dev/null || docker-compose down 2>/dev/null || true
+        print_success "Docker Compose 已停止"
+    fi
+
+    # 杀死直接运行的进程
+    if pgrep -f "claude2api" >/dev/null 2>&1; then
+        pkill -f "claude2api" 2>/dev/null || true
+        print_success "进程已终止"
+    fi
 
     # 2. 删除 systemd 服务
-    print_info "步骤 2/5: 删除 systemd 服务配置..."
-    if command_exists systemctl && systemctl list-unit-files | grep -q claude2api.service; then
+    print_info "[2/5] 删除 systemd 服务..."
+    if command_exists systemctl && systemctl list-unit-files 2>/dev/null | grep -q claude2api.service; then
         if [ "$(whoami)" = "root" ]; then
             systemctl disable claude2api 2>/dev/null || true
             rm -f /etc/systemd/system/claude2api.service
@@ -738,92 +765,55 @@ uninstall_service() {
             sudo systemctl daemon-reload
         fi
         print_success "systemd 服务已删除"
-        uninstalled=true
     else
-        print_info "未找到 systemd 服务"
+        print_info "无 systemd 服务"
     fi
-    echo ""
 
     # 3. 删除 Docker 容器和镜像
-    print_info "步骤 3/5: 删除 Docker 容器和镜像..."
+    print_info "[3/5] 删除 Docker 容器和镜像..."
+    if command_exists docker; then
+        # 删除容器
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^claude2api$"; then
+            docker rm -f claude2api 2>/dev/null || true
+            print_success "Docker 容器已删除"
+        fi
 
-    # 删除容器
-    if docker ps -a --format '{{.Names}}' | grep -q "^claude2api$"; then
-        docker rm -f claude2api 2>/dev/null || true
-        print_success "Docker 容器已删除"
-        uninstalled=true
-    fi
-
-    # 询问是否删除镜像
-    if docker images | grep -q "claude2api"; then
-        read -p "是否删除 Docker 镜像? [y/N]: " remove_image
-        remove_image=${remove_image:-N}
-        if [[ $remove_image == [yY] ]]; then
+        # 删除镜像
+        if docker images 2>/dev/null | grep -q "claude2api"; then
             docker rmi -f claude2api:latest 2>/dev/null || true
             print_success "Docker 镜像已删除"
-            uninstalled=true
         fi
+    else
+        print_info "未安装 Docker"
     fi
-    echo ""
 
     # 4. 删除全局命令
-    print_info "步骤 4/5: 删除全局命令..."
-    if [ -L /usr/local/bin/claude2api ]; then
+    print_info "[4/5] 删除全局命令..."
+    if [ -L /usr/local/bin/claude2api ] || [ -f /usr/local/bin/claude2api ]; then
         if [ "$(whoami)" = "root" ]; then
             rm -f /usr/local/bin/claude2api
         else
             sudo rm -f /usr/local/bin/claude2api
         fi
         print_success "全局命令已删除"
-        uninstalled=true
     else
-        print_info "未找到全局命令"
+        print_info "无全局命令"
     fi
-    echo ""
 
-    # 5. 询问是否删除项目文件
-    print_info "步骤 5/5: 清理项目文件..."
-
-    read -p "是否删除项目文件（包括 .env 配置）? [y/N]: " remove_files
-    remove_files=${remove_files:-N}
-
-    if [[ $remove_files == [yY] ]]; then
-        local current_dir=$(pwd)
-
-        # 检查是否在项目目录
-        if check_in_project_dir; then
-            print_warning "准备删除目录: $current_dir"
-            read -p "最后确认，真的要删除吗? [y/N]: " final_confirm
-            final_confirm=${final_confirm:-N}
-
-            if [[ $final_confirm == [yY] ]]; then
-                cd ..
-                rm -rf "$current_dir"
-                print_success "项目文件已删除"
-                uninstalled=true
-            else
-                print_info "保留项目文件"
-            fi
-        else
-            print_warning "未在项目目录中，跳过文件删除"
-        fi
+    # 5. 删除项目文件
+    print_info "[5/5] 删除项目文件..."
+    if check_in_project_dir; then
+        cd /tmp
+        rm -rf "$current_dir"
+        print_success "项目目录已删除: $current_dir"
     else
-        print_info "保留项目文件和配置"
+        print_info "不在项目目录中，跳过文件删除"
     fi
 
     echo ""
-    if [ "$uninstalled" = true ]; then
-        print_success "🎉 卸载完成！"
-        if [[ $remove_files == [yY] ]] && [[ $final_confirm == [yY] ]]; then
-            echo ""
-            print_info "项目已完全卸载"
-        else
-            echo ""
-            print_info "项目文件保留在原位置，可随时重新部署"
-        fi
-    else
-        print_info "未找到任何已安装的组件"
-    fi
+    print_success "========================================="
+    print_success "🎉 Claude2API 已完全卸载！"
+    print_success "========================================="
 }
 
 # 显示状态
