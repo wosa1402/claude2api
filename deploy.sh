@@ -1,41 +1,41 @@
 #!/bin/bash
 
-# Claude2API One-Click Deployment Script
-# Author: yushangxiao
-# Description: Automated deployment script supporting multiple deployment methods
+# Claude2API 一键部署脚本
+# 作者: yushangxiao
+# 描述: 支持多种部署方式的自动化部署脚本
 
 set -e
 
-# Color output
+# 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m' # 无颜色
 
-# Print colored messages
+# 打印彩色消息
 print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    echo -e "${BLUE}[信息]${NC} $1"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    echo -e "${GREEN}[成功]${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    echo -e "${YELLOW}[警告]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[错误]${NC} $1"
 }
 
-# Check if command exists
+# 检查命令是否存在
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Display banner
+# 显示横幅
 show_banner() {
     echo -e "${BLUE}"
     cat << "EOF"
@@ -47,13 +47,13 @@ show_banner() {
 
 EOF
     echo -e "${NC}"
-    echo -e "${GREEN}One-Click Deployment Script${NC}"
+    echo -e "${GREEN}一键部署脚本${NC}"
     echo ""
 }
 
-# Check prerequisites
+# 检查前置条件
 check_prerequisites() {
-    print_info "Checking prerequisites..."
+    print_info "正在检查前置条件..."
 
     local missing_deps=()
 
@@ -66,25 +66,25 @@ check_prerequisites() {
     fi
 
     if [ ${#missing_deps[@]} -ne 0 ]; then
-        print_error "Missing required dependencies: ${missing_deps[*]}"
-        print_info "Please install missing dependencies first."
+        print_error "缺少必需的依赖: ${missing_deps[*]}"
+        print_info "请先安装缺少的依赖。"
         exit 1
     fi
 
-    print_success "All prerequisites are met."
+    print_success "所有前置条件已满足。"
 }
 
-# Create .env file if not exists
+# 创建 .env 文件（如果不存在）
 setup_env() {
-    print_info "Setting up environment configuration..."
+    print_info "正在设置环境配置..."
 
     if [ ! -f .env ]; then
         if [ -f .env.example ]; then
             cp .env.example .env
-            print_warning ".env file created from .env.example"
-            print_warning "Please edit .env file to configure your settings before running the service."
+            print_warning "已从 .env.example 创建 .env 文件"
+            print_warning "请在运行服务之前编辑 .env 文件以配置您的设置。"
         else
-            print_error ".env.example not found. Creating a basic .env file..."
+            print_error "未找到 .env.example。正在创建基础 .env 文件..."
             cat > .env << 'EOF'
 SESSIONS=sk-ant-sid01-xxxx,sk-ant-sid01-yyyy
 ADDRESS=0.0.0.0:8080
@@ -96,39 +96,39 @@ PROMPT_DISABLE_ARTIFACTS=false
 ENABLE_MIRROR_API=false
 MIRROR_API_PREFIX=/mirror
 EOF
-            print_warning "Basic .env file created. Please configure it before running the service."
+            print_warning "已创建基础 .env 文件。请在运行服务前进行配置。"
         fi
     else
-        print_success ".env file already exists."
+        print_success ".env 文件已存在。"
     fi
 }
 
-# Deploy with Docker
+# 使用 Docker 部署
 deploy_docker() {
-    print_info "Deploying with Docker..."
+    print_info "正在使用 Docker 部署..."
 
-    # Stop and remove existing container if exists
+    # 如果存在旧容器则停止并删除
     if docker ps -a --format '{{.Names}}' | grep -q "^claude2api$"; then
-        print_info "Stopping existing container..."
+        print_info "正在停止现有容器..."
         docker stop claude2api >/dev/null 2>&1 || true
         docker rm claude2api >/dev/null 2>&1 || true
     fi
 
-    # Build Docker image
-    print_info "Building Docker image..."
+    # 构建 Docker 镜像
+    print_info "正在构建 Docker 镜像..."
     docker build -t claude2api:latest .
 
-    # Load environment variables
+    # 加载环境变量
     if [ -f .env ]; then
-        print_info "Loading environment variables from .env..."
+        print_info "正在从 .env 加载环境变量..."
         source .env
     else
-        print_error ".env file not found. Please create one first."
+        print_error "未找到 .env 文件。请先创建一个。"
         exit 1
     fi
 
-    # Run container
-    print_info "Starting Docker container..."
+    # 运行容器
+    print_info "正在启动 Docker 容器..."
     docker run -d \
         -p 8080:8080 \
         --env-file .env \
@@ -136,23 +136,23 @@ deploy_docker() {
         --restart unless-stopped \
         claude2api:latest
 
-    print_success "Docker deployment completed!"
-    print_info "Service is running on http://0.0.0.0:8080"
-    print_info "View logs: docker logs -f claude2api"
+    print_success "Docker 部署完成！"
+    print_info "服务正在运行: http://0.0.0.0:8080"
+    print_info "查看日志: docker logs -f claude2api"
 }
 
-# Deploy with Docker Compose
+# 使用 Docker Compose 部署
 deploy_docker_compose() {
-    print_info "Deploying with Docker Compose..."
+    print_info "正在使用 Docker Compose 部署..."
 
     if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
-        print_error "Docker Compose is not installed."
+        print_error "未安装 Docker Compose。"
         exit 1
     fi
 
-    # Create docker-compose.yml if not exists
+    # 创建 docker-compose.yml（如果不存在）
     if [ ! -f docker-compose.yml ]; then
-        print_info "Creating docker-compose.yml..."
+        print_info "正在创建 docker-compose.yml..."
         cat > docker-compose.yml << 'EOF'
 version: '3'
 services:
@@ -167,52 +167,52 @@ services:
 EOF
     fi
 
-    # Deploy
+    # 部署
     if docker compose version >/dev/null 2>&1; then
         docker compose up -d --build
     else
         docker-compose up -d --build
     fi
 
-    print_success "Docker Compose deployment completed!"
-    print_info "Service is running on http://0.0.0.0:8080"
-    print_info "View logs: docker compose logs -f"
+    print_success "Docker Compose 部署完成！"
+    print_info "服务正在运行: http://0.0.0.0:8080"
+    print_info "查看日志: docker compose logs -f"
 }
 
-# Deploy directly (build from source)
+# 直接部署（从源码构建）
 deploy_direct() {
-    print_info "Deploying from source..."
+    print_info "正在从源码部署..."
 
     if ! command_exists go; then
-        print_error "Go is not installed. Please install Go 1.23+ first."
+        print_error "未安装 Go。请先安装 Go 1.23+。"
         exit 1
     fi
 
-    # Check Go version
+    # 检查 Go 版本
     GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
     REQUIRED_VERSION="1.23"
 
     if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$GO_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
-        print_error "Go version $REQUIRED_VERSION or higher is required. Current version: $GO_VERSION"
+        print_error "需要 Go 版本 $REQUIRED_VERSION 或更高。当前版本: $GO_VERSION"
         exit 1
     fi
 
-    # Build
-    print_info "Building application..."
+    # 构建
+    print_info "正在构建应用..."
     go build -o claude2api .
 
-    print_success "Build completed!"
-    print_info "Run the service with: ./claude2api"
-    print_warning "Make sure .env file is configured before running."
+    print_success "构建完成！"
+    print_info "运行服务: ./claude2api"
+    print_warning "运行前请确保已配置 .env 文件。"
 }
 
-# Stop service
+# 停止服务
 stop_service() {
-    print_info "Stopping Claude2API service..."
+    print_info "正在停止 Claude2API 服务..."
 
     if docker ps --format '{{.Names}}' | grep -q "^claude2api$"; then
         docker stop claude2api
-        print_success "Docker container stopped."
+        print_success "Docker 容器已停止。"
     fi
 
     if docker compose ps 2>/dev/null | grep -q claude2api; then
@@ -221,67 +221,67 @@ stop_service() {
         else
             docker-compose down
         fi
-        print_success "Docker Compose services stopped."
+        print_success "Docker Compose 服务已停止。"
     fi
 
-    # Kill any running process
+    # 杀死任何运行中的进程
     if pgrep -f "./claude2api" >/dev/null; then
         pkill -f "./claude2api"
-        print_success "Direct deployment process stopped."
+        print_success "直接部署进程已停止。"
     fi
 
-    print_success "All services stopped."
+    print_success "所有服务已停止。"
 }
 
-# Show status
+# 显示状态
 show_status() {
-    print_info "Checking service status..."
+    print_info "正在检查服务状态..."
     echo ""
 
-    # Docker container
+    # Docker 容器
     if docker ps --format '{{.Names}}' | grep -q "^claude2api$"; then
-        print_success "Docker container is running"
+        print_success "Docker 容器正在运行"
         docker ps --filter "name=claude2api" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     else
-        print_info "Docker container is not running"
+        print_info "Docker 容器未运行"
     fi
 
     echo ""
 
-    # Direct deployment
+    # 直接部署
     if pgrep -f "./claude2api" >/dev/null; then
-        print_success "Direct deployment process is running"
+        print_success "直接部署进程正在运行"
         ps aux | grep "./claude2api" | grep -v grep
     else
-        print_info "Direct deployment process is not running"
+        print_info "直接部署进程未运行"
     fi
 }
 
-# Show usage
+# 显示使用说明
 show_usage() {
     cat << EOF
-Usage: $0 [COMMAND]
+用法: $0 [命令]
 
-Commands:
-    docker          Deploy using Docker
-    compose         Deploy using Docker Compose
-    direct          Deploy from source (requires Go 1.23+)
-    stop            Stop all running services
-    status          Show service status
-    setup           Setup environment configuration only
-    help            Show this help message
+命令:
+    docker          使用 Docker 部署
+    compose         使用 Docker Compose 部署
+    direct          从源码部署 (需要 Go 1.23+)
+    stop            停止所有运行中的服务
+    status          显示服务状态
+    setup           仅设置环境配置
+    help            显示此帮助信息
 
-Examples:
-    $0 docker       # Deploy with Docker
-    $0 compose      # Deploy with Docker Compose
-    $0 direct       # Build and prepare for direct deployment
-    $0 stop         # Stop all services
-    $0 status       # Check service status
+示例:
+    $0 docker       # 使用 Docker 部署
+    $0 compose      # 使用 Docker Compose 部署
+    $0 direct       # 构建并准备直接部署
+    $0 stop         # 停止所有服务
+    $0 status       # 检查服务状态
 
 EOF
 }
 
-# Main function
+# 主函数
 main() {
     show_banner
 
@@ -313,16 +313,16 @@ main() {
             show_usage
             ;;
         *)
-            print_info "Please select a deployment method:"
+            print_info "请选择一种部署方式:"
             echo ""
-            echo "1) Docker (recommended)"
+            echo "1) Docker (推荐)"
             echo "2) Docker Compose"
-            echo "3) Direct deployment (from source)"
-            echo "4) Stop services"
-            echo "5) Show status"
-            echo "6) Exit"
+            echo "3) 直接部署 (从源码)"
+            echo "4) 停止服务"
+            echo "5) 显示状态"
+            echo "6) 退出"
             echo ""
-            read -p "Enter your choice [1-6]: " choice
+            read -p "请输入您的选择 [1-6]: " choice
 
             case $choice in
                 1)
@@ -346,11 +346,11 @@ main() {
                     show_status
                     ;;
                 6)
-                    print_info "Exiting..."
+                    print_info "正在退出..."
                     exit 0
                     ;;
                 *)
-                    print_error "Invalid choice."
+                    print_error "无效的选择。"
                     show_usage
                     exit 1
                     ;;
