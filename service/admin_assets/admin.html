@@ -538,6 +538,19 @@
               </div>
             </div>
             <div class="hint" id="egressInfo" style="margin-top: 10px">出口IP：--</div>
+            <div style="margin-top: 10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+              <div class="hint" style="margin:0">连接协议族：</div>
+              <select
+                id="ipFamilySel"
+                style="padding: 6px 10px; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.06); color: var(--text)"
+              >
+                <option value="auto">自动（默认）</option>
+                <option value="ipv4">强制 IPv4</option>
+                <option value="ipv6">强制 IPv6</option>
+              </select>
+              <button class="btn sm ghost" id="btnSaveIPFamily" type="button">保存</button>
+              <div class="hint" id="ipFamilyHint" style="margin:0">--</div>
+            </div>
           </div>
         </section>
 
@@ -685,6 +698,10 @@
         } else {
           $("egressInfo").textContent = "出口IP：--";
         }
+
+        const fam = (g.forceIPFamily || "auto").toLowerCase();
+        $("ipFamilySel").value = (fam === "ipv4" || fam === "ipv6") ? fam : "auto";
+        $("ipFamilyHint").textContent = fam === "auto" ? "当前：自动" : ("当前：" + fam.toUpperCase());
 
         const wrap = $("accounts");
         wrap.innerHTML = `
@@ -1030,6 +1047,32 @@
           showToast("已刷新");
         } catch (e) {
           showToast("刷新失败：" + e.message);
+        } finally {
+          setLoading(btn, false);
+        }
+      });
+
+      $("btnSaveIPFamily").addEventListener("click", async () => {
+        const btn = $("btnSaveIPFamily");
+        const family = ($("ipFamilySel").value || "auto").trim();
+        setLoading(btn, true, "保存中…");
+        try {
+          const res = await fetch("/admin/network/ip-family", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ family }),
+          });
+          if (res.status === 401) return (location.href = "/admin/login");
+          if (res.status === 403) return (location.href = "/admin/setup");
+          let body = null;
+          try {
+            body = await res.json();
+          } catch (_) {}
+          if (!res.ok) throw new Error((body && body.error) ? body.error : "HTTP " + res.status);
+          showToast(body && body.savedPath ? ("已保存到 " + body.savedPath) : "已保存");
+          await loadStatus();
+        } catch (e) {
+          showToast("保存失败：" + e.message);
         } finally {
           setLoading(btn, false);
         }

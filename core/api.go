@@ -53,7 +53,7 @@ type ResponseEvent struct {
 	} `json:"error"`
 }
 
-func NewClient(sessionKey string, proxy string, model string) *Client {
+func NewClient(sessionKey string, proxy string, model string, forceIPFamily string) *Client {
 	client := req.C().ImpersonateChrome().SetTimeout(time.Minute * 5)
 	client.Transport.SetResponseHeaderTimeout(time.Second * 10)
 	if proxy != "" {
@@ -115,8 +115,17 @@ func NewClient(sessionKey string, proxy string, model string) *Client {
 	// 说明：
 	// - 这是“本进程 -> claude.ai（或代理）”连接层面的观测，不等价于公网出口 IP
 	// - req/v3 底层会使用 net/http 的连接复用；但本项目每次请求都会 NewClient，因此“本次调用”的观测基本可靠
+	force := strings.ToLower(strings.TrimSpace(forceIPFamily))
 	client.SetDial(func(ctx context.Context, network, addr string) (net.Conn, error) {
 		d := &net.Dialer{Timeout: 20 * time.Second}
+		// 可选：强制使用 IPv4/IPv6（只对 tcp 生效）
+		if strings.HasPrefix(network, "tcp") {
+			if force == "ipv4" || force == "4" {
+				network = "tcp4"
+			} else if force == "ipv6" || force == "6" {
+				network = "tcp6"
+			}
+		}
 		conn, err := d.DialContext(ctx, network, addr)
 		if err == nil && conn != nil {
 			remote := conn.RemoteAddr().String()

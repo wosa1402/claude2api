@@ -39,20 +39,22 @@ type SessionRagen struct {
 }
 
 type Config struct {
-	Sessions               []SessionInfo `yaml:"sessions"`
-	Address                string        `yaml:"address"`
-	APIKey                 string        `yaml:"apiKey"`
-	AdminKey               string        `yaml:"adminKey"`
-	AdminPasswordHash      string        `yaml:"adminPasswordHash"`
-	Proxy                  string        `yaml:"proxy"`
-	ChatDelete             bool          `yaml:"chatDelete"`
-	MaxChatHistoryLength   int           `yaml:"maxChatHistoryLength"`
-	RetryCount             int           `yaml:"retryCount"`
-	NoRolePrefix           bool          `yaml:"noRolePrefix"`
-	PromptDisableArtifacts bool          `yaml:"promptDisableArtifacts"`
-	EnableMirrorApi        bool          `yaml:"enableMirrorApi"`
-	MirrorApiPrefix        string        `yaml:"mirrorApiPrefix"`
-	RwMutx                 sync.RWMutex  `yaml:"-"` // 不从YAML加载
+	Sessions          []SessionInfo `yaml:"sessions"`
+	Address           string        `yaml:"address"`
+	APIKey            string        `yaml:"apiKey"`
+	AdminKey          string        `yaml:"adminKey"`
+	AdminPasswordHash string        `yaml:"adminPasswordHash"`
+	// 出口协议族控制：auto / ipv4 / ipv6
+	ForceIPFamily          string       `yaml:"forceIPFamily"`
+	Proxy                  string       `yaml:"proxy"`
+	ChatDelete             bool         `yaml:"chatDelete"`
+	MaxChatHistoryLength   int          `yaml:"maxChatHistoryLength"`
+	RetryCount             int          `yaml:"retryCount"`
+	NoRolePrefix           bool         `yaml:"noRolePrefix"`
+	PromptDisableArtifacts bool         `yaml:"promptDisableArtifacts"`
+	EnableMirrorApi        bool         `yaml:"enableMirrorApi"`
+	MirrorApiPrefix        string       `yaml:"mirrorApiPrefix"`
+	RwMutx                 sync.RWMutex `yaml:"-"` // 不从YAML加载
 }
 
 // 解析 SESSION 格式的环境变量
@@ -192,6 +194,8 @@ func loadConfigFromEnv() *Config {
 		AdminKey: os.Getenv("ADMIN_KEY"),
 		// 管理后台密码哈希（可选）
 		AdminPasswordHash: os.Getenv("ADMIN_PASSWORD_HASH"),
+		// 出口协议族控制（可选）：auto / ipv4 / ipv6
+		ForceIPFamily: os.Getenv("FORCE_IP_FAMILY"),
 		// 设置代理地址
 		Proxy: os.Getenv("PROXY"),
 		// 自动删除聊天
@@ -215,6 +219,9 @@ func loadConfigFromEnv() *Config {
 	// 如果地址为空，使用默认值
 	if config.Address == "" {
 		config.Address = "0.0.0.0:8080"
+	}
+	if strings.TrimSpace(config.ForceIPFamily) == "" {
+		config.ForceIPFamily = "auto"
 	}
 	return config
 }
@@ -244,6 +251,9 @@ func normalizeSessionDefaults(c *Config) {
 	}
 	c.RwMutx.Lock()
 	defer c.RwMutx.Unlock()
+	if strings.TrimSpace(c.ForceIPFamily) == "" {
+		c.ForceIPFamily = "auto"
+	}
 	for i := range c.Sessions {
 		if strings.TrimSpace(c.Sessions[i].Pool) == "" {
 			c.Sessions[i].Pool = "low"

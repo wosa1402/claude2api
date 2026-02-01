@@ -48,7 +48,10 @@ func runSessionAutoClassify(s config.SessionInfo) (askedModel, reportedModel, su
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy
 	config.ConfigInstance.RwMutx.RUnlock()
-	client := core.NewClient(s.SessionKey, proxy, askedModel)
+	config.ConfigInstance.RwMutx.RLock()
+	forceIPFamily := config.ConfigInstance.ForceIPFamily
+	config.ConfigInstance.RwMutx.RUnlock()
+	client := core.NewClient(s.SessionKey, proxy, askedModel, forceIPFamily)
 
 	orgID := strings.TrimSpace(s.OrgID)
 	if orgID == "" {

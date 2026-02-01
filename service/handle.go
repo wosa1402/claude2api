@@ -271,7 +271,11 @@ func extractSessionFromAuthHeader(c *gin.Context) (config.SessionInfo, error) {
 
 func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string, string, time.Time) {
 	// Initialize the Claude client
-	claudeClient := core.NewClient(session.SessionKey, config.ConfigInstance.Proxy, model)
+	config.ConfigInstance.RwMutx.RLock()
+	proxy := config.ConfigInstance.Proxy
+	forceIPFamily := config.ConfigInstance.ForceIPFamily
+	config.ConfigInstance.RwMutx.RUnlock()
+	claudeClient := core.NewClient(session.SessionKey, proxy, model, forceIPFamily)
 
 	// Get org ID if not already set
 	if session.OrgID == "" {

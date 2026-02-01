@@ -12,16 +12,17 @@ import (
 
 type adminStatusResp struct {
 	Global struct {
-		OK          int     `json:"ok"`
-		Fail        int     `json:"fail"`
-		SuccessRate float64 `json:"successRate"`
-		LastAt      string  `json:"lastAt"`
-		LastOkAt    string  `json:"lastOkAt"`
-		LastError   string  `json:"lastError"`
-		EgressIPv4  string  `json:"egressIPv4"`
-		EgressIPv6  string  `json:"egressIPv6"`
-		EgressAt    string  `json:"egressAt"`
-		EgressError string  `json:"egressError"`
+		OK            int     `json:"ok"`
+		Fail          int     `json:"fail"`
+		SuccessRate   float64 `json:"successRate"`
+		LastAt        string  `json:"lastAt"`
+		LastOkAt      string  `json:"lastOkAt"`
+		LastError     string  `json:"lastError"`
+		EgressIPv4    string  `json:"egressIPv4"`
+		EgressIPv6    string  `json:"egressIPv6"`
+		EgressAt      string  `json:"egressAt"`
+		EgressError   string  `json:"egressError"`
+		ForceIPFamily string  `json:"forceIPFamily"`
 	} `json:"global"`
 	Accounts []adminAccountResp `json:"accounts"`
 }
@@ -79,6 +80,12 @@ func AdminStatusHandler(c *gin.Context) {
 		resp.Global.EgressAt = eg.CheckedAt.Format(time.RFC3339)
 	}
 	resp.Global.EgressError = eg.Err
+	config.ConfigInstance.RwMutx.RLock()
+	resp.Global.ForceIPFamily = strings.TrimSpace(config.ConfigInstance.ForceIPFamily)
+	config.ConfigInstance.RwMutx.RUnlock()
+	if resp.Global.ForceIPFamily == "" {
+		resp.Global.ForceIPFamily = "auto"
+	}
 
 	config.ConfigInstance.RwMutx.RLock()
 	sessions := make([]config.SessionInfo, len(config.ConfigInstance.Sessions))
