@@ -12,18 +12,18 @@ import (
 
 type adminStatusResp struct {
 	Global struct {
-		OK              int     `json:"ok"`
-		Fail            int     `json:"fail"`
-		SuccessRate     float64 `json:"successRate"`
-		LastAt          string  `json:"lastAt"`
-		LastOkAt        string  `json:"lastOkAt"`
-		LastError       string  `json:"lastError"`
-		EgressIPv4      string  `json:"egressIPv4"`
-		EgressIPv6      string  `json:"egressIPv6"`
-		EgressAt        string  `json:"egressAt"`
-		EgressError     string  `json:"egressError"`
-		ForceIPFamily   string  `json:"forceIPFamily"`
-		RecordEgressIP  bool    `json:"recordEgressIP"`
+		OK             int     `json:"ok"`
+		Fail           int     `json:"fail"`
+		SuccessRate    float64 `json:"successRate"`
+		LastAt         string  `json:"lastAt"`
+		LastOkAt       string  `json:"lastOkAt"`
+		LastError      string  `json:"lastError"`
+		EgressIPv4     string  `json:"egressIPv4"`
+		EgressIPv6     string  `json:"egressIPv6"`
+		EgressAt       string  `json:"egressAt"`
+		EgressError    string  `json:"egressError"`
+		ForceIPFamily  string  `json:"forceIPFamily"`
+		RecordEgressIP bool    `json:"recordEgressIP"`
 	} `json:"global"`
 	Accounts []adminAccountResp `json:"accounts"`
 }
@@ -117,32 +117,37 @@ func AdminStatusHandler(c *gin.Context) {
 			a.Pool = "low"
 		}
 
+		// 复制一份统计快照，避免与 recordAttempt 并发读写产生数据竞争
+		var stVal accountStat
 		statsMu.Lock()
 		st := perSession[s.SessionKey]
+		if st != nil {
+			stVal = *st
+		}
 		statsMu.Unlock()
 		if st != nil {
-			a.FailStreak = st.FailStreak
-			if !st.CooldownUntil.IsZero() && st.CooldownUntil.After(now) {
-				a.CooldownUntil = st.CooldownUntil.Format(time.RFC3339)
+			a.FailStreak = stVal.FailStreak
+			if !stVal.CooldownUntil.IsZero() && stVal.CooldownUntil.After(now) {
+				a.CooldownUntil = stVal.CooldownUntil.Format(time.RFC3339)
 			}
-			a.LastRemoteIP = st.LastRemoteIP
-			if !st.LastRemoteAt.IsZero() {
-				a.LastRemoteAt = st.LastRemoteAt.Format(time.RFC3339)
+			a.LastRemoteIP = stVal.LastRemoteIP
+			if !stVal.LastRemoteAt.IsZero() {
+				a.LastRemoteAt = stVal.LastRemoteAt.Format(time.RFC3339)
 			}
-			a.LastEgressIP = st.LastEgressIP
-			if !st.LastEgressAt.IsZero() {
-				a.LastEgressAt = st.LastEgressAt.Format(time.RFC3339)
+			a.LastEgressIP = stVal.LastEgressIP
+			if !stVal.LastEgressAt.IsZero() {
+				a.LastEgressAt = stVal.LastEgressAt.Format(time.RFC3339)
 			}
-			a.OK = st.OK
-			a.Fail = st.Fail
-			totalA := st.OK + st.Fail
+			a.OK = stVal.OK
+			a.Fail = stVal.Fail
+			totalA := stVal.OK + stVal.Fail
 			if totalA > 0 {
-				a.SuccessRate = float64(st.OK) / float64(totalA)
+				a.SuccessRate = float64(stVal.OK) / float64(totalA)
 			}
-			a.Recent = st.Recent.snapshot()
-			a.LastError = st.LastError
-			if !st.LastAt.IsZero() {
-				a.LastAt = st.LastAt.Format(time.RFC3339)
+			a.Recent = stVal.Recent.snapshot()
+			a.LastError = stVal.LastError
+			if !stVal.LastAt.IsZero() {
+				a.LastAt = stVal.LastAt.Format(time.RFC3339)
 			}
 		} else {
 			a.Recent = newRecentWindow().snapshot()
@@ -429,6 +434,7 @@ func AdminDeleteSessionHandler(c *gin.Context) {
 	// 清理内存统计（避免残留）
 	statsMu.Lock()
 	delete(perSession, removedKey)
+	markStatsDirty()
 	statsMu.Unlock()
 
 	path, err := config.PersistConfig()

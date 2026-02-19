@@ -29,6 +29,7 @@ func MoudlesHandler(c *gin.Context) {
 	models := []map[string]interface{}{
 		{"id": "claude-sonnet-4-20250514"},
 		{"id": "claude-sonnet-4-5-20250929"},
+		{"id": "claude-sonnet-4-6"},
 		{"id": "claude-haiku-4-5-20251001"},
 	}
 
@@ -75,7 +76,7 @@ func ChatCompletionsHandler(c *gin.Context) {
 
 	// 根据模型选择 session 池：
 	// - Claude 4（sonnet-4-20250514）优先走低权重池（low）
-	// - 4.5/haiku 走正常权重池（high）
+	// - 4.5/4.6/haiku 走正常权重池（high）
 	baseModel := strings.TrimSuffix(model, "-think")
 	wantPool := "high"
 	if baseModel == "claude-sonnet-4-20250514" {

@@ -140,4 +140,7 @@ func recordAttempt(session config.SessionInfo, ok bool, errType string, remoteIP
 		global.Fail++
 		global.LastError = errType
 	}
+
+	// 标记统计已更新（用于后台定时落盘，保证重启后统计/冷却不丢）
+	markStatsDirty()
 }

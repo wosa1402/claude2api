@@ -7,18 +7,48 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
 
 var modelIDRe = regexp.MustCompile(`claude-[a-z0-9-]+`)
 
+func parseSonnet4Minor(modelID string) (int, bool) {
+	const prefix = "claude-sonnet-4-"
+	if !strings.HasPrefix(modelID, prefix) {
+		return 0, false
+	}
+	rest := strings.TrimPrefix(modelID, prefix)
+	if rest == "" {
+		return 0, false
+	}
+	seg := rest
+	if i := strings.IndexByte(rest, '-'); i >= 0 {
+		seg = rest[:i]
+	}
+	// minor 版本一般是 1~2 位数字（如 5/6），日期版本一般是 8 位数字（如 20250514）
+	if len(seg) == 0 || len(seg) > 2 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(seg)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 func classifyModelToPool(modelID string) string {
 	m := strings.ToLower(strings.TrimSpace(modelID))
-	if strings.Contains(m, "-4-5-") || strings.Contains(m, "haiku-4-5") {
+	// 明确的高权重特征（4.5/4.6/haiku 等）
+	if strings.Contains(m, "-4-5-") || strings.Contains(m, "-4-6-") || strings.HasSuffix(m, "-4-6") ||
+		strings.Contains(m, "haiku-4-5") || strings.Contains(m, "haiku-4-6") {
 		return "high"
 	}
-	if strings.Contains(m, "sonnet-4-20250514") || strings.HasPrefix(m, "claude-sonnet-4-") {
+	if strings.HasPrefix(m, "claude-sonnet-4-") {
+		if minor, ok := parseSonnet4Minor(m); ok && minor >= 5 {
+			return "high"
+		}
 		return "low"
 	}
 	// 其它未知情况默认 low，避免误把低权重放进 high
@@ -43,7 +73,7 @@ func classifyAskModel() string {
 
 func runSessionAutoClassify(s config.SessionInfo) (askedModel, reportedModel, suggestedPool, raw, errType, errMsg string) {
 	askedModel = classifyAskModel()
-	prompt := "Please output only your current model ID (e.g. claude-sonnet-4-20250514 or claude-sonnet-4-5-20250929), nothing else."
+	prompt := "Please output only your current model ID (e.g. claude-sonnet-4-20250514 / claude-sonnet-4-5-20250929 / claude-sonnet-4-6), nothing else."
 
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy
