@@ -43,7 +43,7 @@ type NoStreamChoice struct {
 
 // Delta 结构用于存储返回的文本内容
 type Delta struct {
-	Content string `json:"content"`
+	Content string `json:"content,omitempty"`
 }
 type Message struct {
 	Role       string        `json:"role"`
@@ -66,17 +66,21 @@ type Usage struct {
 	TotalTokens      int `json:"total_tokens"`
 }
 
-func ReturnOpenAIResponse(text string, stream bool, gc *gin.Context) error {
+func NewCompletionID() string {
+	return "chatcmpl-" + uuid.New().String()
+}
+
+func ReturnOpenAIResponse(text string, stream bool, gc *gin.Context, completionID string) error {
 	if stream {
-		return streamRespose(text, gc)
+		return streamRespose(text, gc, completionID)
 	} else {
-		return noStreamResponse(text, gc)
+		return noStreamResponse(text, gc, completionID)
 	}
 }
 
-func streamRespose(text string, gc *gin.Context) error {
+func streamRespose(text string, gc *gin.Context, completionID string) error {
 	openAIResp := &OpenAISrteamResponse{
-		ID:      uuid.New().String(),
+		ID:      completionID,
 		Object:  "chat.completion.chunk",
 		Created: time.Now().Unix(),
 		Model:   "claude-3-7-sonnet-20250219",
@@ -106,9 +110,9 @@ func streamRespose(text string, gc *gin.Context) error {
 	return nil
 }
 
-func noStreamResponse(text string, gc *gin.Context) error {
+func noStreamResponse(text string, gc *gin.Context, completionID string) error {
 	openAIResp := &OpenAIResponse{
-		ID:      uuid.New().String(),
+		ID:      completionID,
 		Object:  "chat.completion",
 		Created: time.Now().Unix(),
 		Model:   "claude-3-7-sonnet-20250219",
@@ -126,5 +130,33 @@ func noStreamResponse(text string, gc *gin.Context) error {
 	}
 
 	gc.JSON(200, openAIResp)
+	return nil
+}
+
+func StreamFinishResponse(gc *gin.Context, completionID string) error {
+	openAIResp := &OpenAISrteamResponse{
+		ID:      completionID,
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   "claude-3-7-sonnet-20250219",
+		Choices: []StreamChoice{
+			{
+				Index:        0,
+				Delta:        Delta{},
+				FinishReason: "stop",
+			},
+		},
+	}
+
+	jsonBytes, err := json.Marshal(openAIResp)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Error marshalling JSON: %v", err))
+		return err
+	}
+	jsonBytes = append([]byte("data: "), jsonBytes...)
+	jsonBytes = append(jsonBytes, []byte("\n\n")...)
+
+	gc.Writer.Write(jsonBytes)
+	gc.Writer.Flush()
 	return nil
 }

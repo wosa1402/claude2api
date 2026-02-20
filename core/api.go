@@ -347,6 +347,7 @@ func (c *Client) SendMessageExtractText(conversationID string, message string) (
 // HandleResponse converts Claude's SSE format to OpenAI format and writes to the response writer
 func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context) error {
 	defer body.Close()
+	completionID := model.NewCompletionID()
 	// Set headers for streaming
 	if stream {
 		gc.Writer.Header().Set("Content-Type", "text/event-stream")
@@ -384,7 +385,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 		var event ResponseEvent
 		if err := json.Unmarshal([]byte(data), &event); err == nil {
 			if event.Type == "error" && event.Error.Message != "" {
-				model.ReturnOpenAIResponse(event.Error.Message, stream, gc)
+				model.ReturnOpenAIResponse(event.Error.Message, stream, gc, completionID)
 				return nil
 			}
 			if event.ContentBlock.Type == "tool_use" {
@@ -407,7 +408,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 				if !stream {
 					continue
 				}
-				model.ReturnOpenAIResponse(res_text, stream, gc)
+				model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
 				continue
 			}
 			if event.Delta.Type == "text_delta" && event.Delta.Text != "" {
@@ -416,7 +417,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 				if !stream {
 					continue
 				}
-				model.ReturnOpenAIResponse(res_text, stream, gc)
+				model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
 				continue
 			}
 			if event.Delta.Type == "thinking_delta" {
@@ -429,7 +430,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 				if !stream {
 					continue
 				}
-				model.ReturnOpenAIResponse(res_text, stream, gc)
+				model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
 				continue
 			}
 			if event.Delta.Type == "input_json_delta" {
@@ -495,7 +496,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 				if !stream {
 					continue
 				}
-				model.ReturnOpenAIResponse(res_text, stream, gc)
+				model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
 				continue
 			}
 		}
@@ -504,8 +505,10 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 		return fmt.Errorf("error reading response: %w", err)
 	}
 	if !stream {
-		model.ReturnOpenAIResponse(res_all_text, stream, gc)
+		model.ReturnOpenAIResponse(res_all_text, stream, gc, completionID)
 	} else {
+		// 发送 finish_reason: "stop" 的终止 chunk
+		model.StreamFinishResponse(gc, completionID)
 		// 发送结束标志
 		gc.Writer.Write([]byte("data: [DONE]\n\n"))
 		gc.Writer.Flush()
