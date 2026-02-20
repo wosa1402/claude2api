@@ -254,7 +254,7 @@ func (c *Client) CreateConversation() (string, error) {
 }
 
 // SendMessage sends a message to a conversation and returns the status and response
-func (c *Client) SendMessage(conversationID string, message string, stream bool, gc *gin.Context) (int, error) {
+func (c *Client) SendMessage(conversationID string, message string, stream bool, gc *gin.Context, hasTools bool) (int, error) {
 	if c.orgID == "" {
 		return 500, errors.New("organization ID not set")
 	}
@@ -284,7 +284,7 @@ func (c *Client) SendMessage(conversationID string, message string, stream bool,
 	if resp.StatusCode != http.StatusOK {
 		return resp.StatusCode, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-	return 200, c.HandleResponse(resp.Body, stream, gc)
+	return 200, c.HandleResponse(resp.Body, stream, gc, hasTools)
 }
 
 // SendMessageExtractText 发送消息并从 SSE 中提取纯文本（用于管理后台的低频探测/分类）
@@ -345,7 +345,7 @@ func (c *Client) SendMessageExtractText(conversationID string, message string) (
 }
 
 // HandleResponse converts Claude's SSE format to OpenAI format and writes to the response writer
-func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context) error {
+func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context, hasTools bool) error {
 	defer body.Close()
 	completionID := model.NewCompletionID()
 	// Set headers for streaming
@@ -367,6 +367,15 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 	useToolEnd := false
 	nextLanguage := false
 	languageStr := "md"
+
+	// tool_call 解析相关
+	var toolParser *toolCallParser
+	toolCallIndex := 0
+	var allToolCalls []model.ToolCall
+	if hasTools {
+		toolParser = newToolCallParser()
+	}
+
 	for scanner.Scan() {
 		select {
 		case <-clientDone:
@@ -408,16 +417,45 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 				if !stream {
 					continue
 				}
-				model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
+				if res_text != "" {
+					model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
+				}
 				continue
 			}
 			if event.Delta.Type == "text_delta" && event.Delta.Text != "" {
-				res_text := event.Delta.Text
-				res_all_text += res_text
-				if !stream {
-					continue
+				if hasTools && toolParser != nil {
+					// 通过 tool_call 解析器处理
+					normalText, toolCalls := toolParser.Feed(event.Delta.Text)
+					if normalText != "" {
+						res_all_text += normalText
+						if stream {
+							model.ReturnOpenAIResponse(normalText, stream, gc, completionID)
+						}
+					}
+					for _, tc := range toolCalls {
+						callID := model.NewToolCallID()
+						argsStr := string(tc.Arguments)
+						if stream {
+							model.StreamToolCallStartResponse(toolCallIndex, callID, tc.Name, argsStr, gc, completionID)
+						} else {
+							allToolCalls = append(allToolCalls, model.ToolCall{
+								Index:    toolCallIndex,
+								ID:       callID,
+								Type:     "function",
+								Function: model.ToolCallFunction{Name: tc.Name, Arguments: argsStr},
+							})
+						}
+						toolCallIndex++
+					}
+				} else {
+					// 原有逻辑
+					res_text := event.Delta.Text
+					res_all_text += res_text
+					if !stream {
+						continue
+					}
+					model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
 				}
-				model.ReturnOpenAIResponse(res_text, stream, gc, completionID)
 				continue
 			}
 			if event.Delta.Type == "thinking_delta" {
@@ -504,11 +542,47 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("error reading response: %w", err)
 	}
+
+	// 流结束时刷出解析器缓冲区
+	if hasTools && toolParser != nil {
+		remainingText, remainingCalls := toolParser.Flush()
+		if remainingText != "" {
+			res_all_text += remainingText
+			if stream {
+				model.ReturnOpenAIResponse(remainingText, stream, gc, completionID)
+			}
+		}
+		for _, tc := range remainingCalls {
+			callID := model.NewToolCallID()
+			argsStr := string(tc.Arguments)
+			if stream {
+				model.StreamToolCallStartResponse(toolCallIndex, callID, tc.Name, argsStr, gc, completionID)
+			} else {
+				allToolCalls = append(allToolCalls, model.ToolCall{
+					Index:    toolCallIndex,
+					ID:       callID,
+					Type:     "function",
+					Function: model.ToolCallFunction{Name: tc.Name, Arguments: argsStr},
+				})
+			}
+			toolCallIndex++
+		}
+	}
+
+	toolCallsFound := hasTools && toolParser != nil && toolParser.HasToolCalls()
+
 	if !stream {
-		model.ReturnOpenAIResponse(res_all_text, stream, gc, completionID)
+		if toolCallsFound {
+			model.NoStreamToolCallResponse(allToolCalls, res_all_text, gc, completionID)
+		} else {
+			model.ReturnOpenAIResponse(res_all_text, stream, gc, completionID)
+		}
 	} else {
-		// 发送 finish_reason: "stop" 的终止 chunk
-		model.StreamFinishResponse(gc, completionID)
+		if toolCallsFound {
+			model.StreamFinishResponse(gc, completionID, "tool_calls")
+		} else {
+			model.StreamFinishResponse(gc, completionID, "stop")
+		}
 		// 发送结束标志
 		gc.Writer.Write([]byte("data: [DONE]\n\n"))
 		gc.Writer.Flush()

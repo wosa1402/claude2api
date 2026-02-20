@@ -70,11 +70,10 @@ func ChatCompletionsHandler(c *gin.Context) {
 	// Process messages into prompt and extract images
 	processor := utils.NewChatRequestProcessor()
 	processor.ProcessMessages(req.Messages)
+	processor.InjectToolDefinitions(req.Tools)
 
 	// Get model or use default
 	model := getModelOrDefault(req.Model)
-
-	// 根据模型选择 session 池：
 	// - Claude 4（sonnet-4-20250514）优先走低权重池（low）
 	// - 4.5/4.6/haiku 走正常权重池（high）
 	baseModel := strings.TrimSuffix(model, "-think")
@@ -166,7 +165,7 @@ func ChatCompletionsHandler(c *gin.Context) {
 			processor.Prompt.WriteString(processor.RootPrompt.String())
 		}
 		// Initialize client and process request
-		ok, errType, remoteIP, remoteAt, egressIP, egressAt := handleChatRequest(c, session, model, processor, req.Stream)
+		ok, errType, remoteIP, remoteAt, egressIP, egressAt := handleChatRequest(c, session, model, processor, req.Stream, processor.HasTools)
 		recordAttempt(session, ok, errType, remoteIP, remoteAt, egressIP, egressAt)
 		if ok {
 			return // Success, exit the retry loop
@@ -201,6 +200,7 @@ func MirrorChatHandler(c *gin.Context) {
 	// Process messages into prompt and extract images
 	processor := utils.NewChatRequestProcessor()
 	processor.ProcessMessages(req.Messages)
+	processor.InjectToolDefinitions(req.Tools)
 
 	// Get model or use default
 	model := getModelOrDefault(req.Model)
@@ -215,7 +215,7 @@ func MirrorChatHandler(c *gin.Context) {
 	}
 
 	// Process the request with the provided session
-	ok, errType, remoteIP, remoteAt, egressIP, egressAt := handleChatRequest(c, session, model, processor, req.Stream)
+	ok, errType, remoteIP, remoteAt, egressIP, egressAt := handleChatRequest(c, session, model, processor, req.Stream, processor.HasTools)
 	recordAttempt(session, ok, errType, remoteIP, remoteAt, egressIP, egressAt)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{
@@ -270,7 +270,7 @@ func extractSessionFromAuthHeader(c *gin.Context) (config.SessionInfo, error) {
 	return config.SessionInfo{SessionKey: authInfo, OrgID: "", Enabled: true}, nil
 }
 
-func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool) (bool, string, string, time.Time, string, time.Time) {
+func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool, hasTools bool) (bool, string, string, time.Time, string, time.Time) {
 	// Initialize the Claude client
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy
@@ -329,7 +329,7 @@ func handleChatRequest(c *gin.Context, session config.SessionInfo, model string,
 	}
 
 	// Send message
-	if _, err := claudeClient.SendMessage(conversationID, processor.Prompt.String(), stream, c); err != nil {
+	if _, err := claudeClient.SendMessage(conversationID, processor.Prompt.String(), stream, c, hasTools); err != nil {
 		logger.Error(fmt.Sprintf("Failed to send message: %v", err))
 		go cleanupConversation(claudeClient, conversationID, 3)
 		remoteIP, remoteAt := claudeClient.LastDialRemoteIP()
