@@ -97,9 +97,9 @@ cd claude2api
 cp .env.example .env  
 vim .env  
 # Build the binary
-go build -o claude2api .
+go build -o c2c .
 
-./claude2api
+./c2c
 ```
 
 ### GitHub Actions Binary Build

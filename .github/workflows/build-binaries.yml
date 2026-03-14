@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  APP_NAME: claude2api
+  APP_NAME: c2c
 
 concurrency:
   group: build-binaries-${{ github.ref }}
