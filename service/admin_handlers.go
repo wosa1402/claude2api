@@ -35,6 +35,8 @@ type adminAccountResp struct {
 	Account               string        `json:"account"`
 	Enabled               bool          `json:"enabled"`
 	Pool                  string        `json:"pool"`
+	ForceIPFamily         string        `json:"forceIPFamily"`
+	EffectiveIPFamily     string        `json:"effectiveIPFamily"`
 	Status                string        `json:"status"`
 	FailStreak            int           `json:"failStreak"`
 	CooldownUntil         string        `json:"cooldownUntil"`
@@ -84,12 +86,9 @@ func AdminStatusHandler(c *gin.Context) {
 	}
 	resp.Global.EgressError = eg.Err
 	config.ConfigInstance.RwMutx.RLock()
-	resp.Global.ForceIPFamily = strings.TrimSpace(config.ConfigInstance.ForceIPFamily)
+	resp.Global.ForceIPFamily = config.NormalizeGlobalIPFamily(config.ConfigInstance.ForceIPFamily)
 	resp.Global.RecordEgressIP = config.ConfigInstance.RecordEgressIP
 	config.ConfigInstance.RwMutx.RUnlock()
-	if resp.Global.ForceIPFamily == "" {
-		resp.Global.ForceIPFamily = "auto"
-	}
 
 	config.ConfigInstance.RwMutx.RLock()
 	sessions := make([]config.SessionInfo, len(config.ConfigInstance.Sessions))
@@ -106,6 +105,8 @@ func AdminStatusHandler(c *gin.Context) {
 			Account:               s.Account,
 			Enabled:               s.Enabled,
 			Pool:                  strings.TrimSpace(s.Pool),
+			ForceIPFamily:         s.ForceIPFamily,
+			EffectiveIPFamily:     config.EffectiveIPFamily(s.ForceIPFamily, resp.Global.ForceIPFamily),
 			ClassifyLastAt:        s.ClassifyLastAt,
 			ClassifyAskedModel:    s.ClassifyAskedModel,
 			ClassifyReportedModel: s.ClassifyReportedModel,
@@ -172,11 +173,12 @@ func AdminStatusHandler(c *gin.Context) {
 }
 
 type addSessionReq struct {
-	Name       string `json:"name"`
-	Account    string `json:"account"`
-	SessionKey string `json:"sessionKey"`
-	OrgID      string `json:"orgID"`
-	Pool       string `json:"pool"`
+	Name          string `json:"name"`
+	Account       string `json:"account"`
+	SessionKey    string `json:"sessionKey"`
+	OrgID         string `json:"orgID"`
+	Pool          string `json:"pool"`
+	ForceIPFamily string `json:"forceIPFamily"`
 }
 
 func AdminAddSessionHandler(c *gin.Context) {
@@ -191,6 +193,12 @@ func AdminAddSessionHandler(c *gin.Context) {
 	req.Account = strings.TrimSpace(req.Account)
 	req.OrgID = strings.TrimSpace(req.OrgID)
 	req.Pool = strings.TrimSpace(req.Pool)
+	normalizedFamily, ok := config.NormalizeSessionIPFamily(req.ForceIPFamily)
+	if !ok {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "forceIPFamily 只允许 inherit/auto/ipv4/ipv6"})
+		return
+	}
+	req.ForceIPFamily = normalizedFamily
 	if req.Pool == "" {
 		req.Pool = "low"
 	}
@@ -205,12 +213,13 @@ func AdminAddSessionHandler(c *gin.Context) {
 	}
 
 	newSession := config.SessionInfo{
-		SessionKey: req.SessionKey,
-		OrgID:      req.OrgID,
-		Name:       req.Name,
-		Account:    req.Account,
-		Enabled:    true,
-		Pool:       req.Pool,
+		SessionKey:    req.SessionKey,
+		OrgID:         req.OrgID,
+		Name:          req.Name,
+		Account:       req.Account,
+		Enabled:       true,
+		Pool:          req.Pool,
+		ForceIPFamily: req.ForceIPFamily,
 	}
 
 	config.ConfigInstance.RwMutx.Lock()
@@ -259,6 +268,10 @@ type toggleReq struct {
 
 type setPoolReq struct {
 	Pool string `json:"pool"`
+}
+
+type setSessionIPFamilyReq struct {
+	Family string `json:"family"`
 }
 
 func AdminToggleSessionHandler(c *gin.Context) {
@@ -340,6 +353,47 @@ func AdminSetSessionPoolHandler(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "savedPath": path})
+}
+
+func AdminSetSessionIPFamilyHandler(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id < 0 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id 不合法"})
+		return
+	}
+	var req setSessionIPFamilyReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "请求格式错误"})
+		return
+	}
+	family, ok := config.NormalizeSessionIPFamily(req.Family)
+	if !ok {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "family 只允许 inherit/auto/ipv4/ipv6"})
+		return
+	}
+
+	config.ConfigInstance.RwMutx.Lock()
+	if id >= len(config.ConfigInstance.Sessions) {
+		config.ConfigInstance.RwMutx.Unlock()
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "id 超出范围"})
+		return
+	}
+	prev := config.ConfigInstance.Sessions[id].ForceIPFamily
+	config.ConfigInstance.Sessions[id].ForceIPFamily = family
+	config.ConfigInstance.RwMutx.Unlock()
+
+	path, err := config.PersistConfig()
+	if err != nil {
+		config.ConfigInstance.RwMutx.Lock()
+		if id < len(config.ConfigInstance.Sessions) {
+			config.ConfigInstance.Sessions[id].ForceIPFamily = prev
+		}
+		config.ConfigInstance.RwMutx.Unlock()
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "保存配置失败：" + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "savedPath": path, "forceIPFamily": family})
 }
 
 type autoClassifyReq struct {

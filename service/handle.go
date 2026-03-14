@@ -264,26 +264,46 @@ func extractSessionFromAuthHeader(c *gin.Context) (config.SessionInfo, error) {
 
 	if strings.Contains(authInfo, ":") {
 		parts := strings.Split(authInfo, ":")
-		return config.SessionInfo{SessionKey: parts[0], OrgID: parts[1], Enabled: true}, nil
+		return enrichSessionFromConfig(config.SessionInfo{SessionKey: parts[0], OrgID: parts[1], Enabled: true}), nil
 	}
 
-	return config.SessionInfo{SessionKey: authInfo, OrgID: "", Enabled: true}, nil
+	return enrichSessionFromConfig(config.SessionInfo{SessionKey: authInfo, OrgID: "", Enabled: true}), nil
+}
+
+func enrichSessionFromConfig(base config.SessionInfo) config.SessionInfo {
+	config.ConfigInstance.RwMutx.RLock()
+	defer config.ConfigInstance.RwMutx.RUnlock()
+	for _, s := range config.ConfigInstance.Sessions {
+		if s.SessionKey != base.SessionKey {
+			continue
+		}
+		if strings.TrimSpace(base.OrgID) == "" {
+			base.OrgID = s.OrgID
+		}
+		base.Name = s.Name
+		base.Account = s.Account
+		base.Pool = s.Pool
+		base.ForceIPFamily = s.ForceIPFamily
+		break
+	}
+	return base
 }
 
 func handleChatRequest(c *gin.Context, session config.SessionInfo, model string, processor *utils.ChatRequestProcessor, stream bool, hasTools bool) (bool, string, string, time.Time, string, time.Time) {
 	// Initialize the Claude client
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy
-	forceIPFamily := config.ConfigInstance.ForceIPFamily
+	globalForceIPFamily := config.NormalizeGlobalIPFamily(config.ConfigInstance.ForceIPFamily)
 	recordEgressIP := config.ConfigInstance.RecordEgressIP
 	config.ConfigInstance.RwMutx.RUnlock()
-	claudeClient := core.NewClient(session.SessionKey, proxy, model, forceIPFamily)
+	effectiveForceIPFamily := config.EffectiveIPFamily(session.ForceIPFamily, globalForceIPFamily)
+	claudeClient := core.NewClient(session.SessionKey, proxy, model, effectiveForceIPFamily)
 
 	// 如果开启了出口 IP 记录，则检测一次
 	var egressIP string
 	var egressAt time.Time
 	if recordEgressIP {
-		egressIP = FetchEgressIPOnce(forceIPFamily)
+		egressIP = FetchEgressIPOnce(effectiveForceIPFamily)
 		if egressIP != "" {
 			egressAt = time.Now()
 		}

@@ -77,11 +77,10 @@ func runSessionAutoClassify(s config.SessionInfo) (askedModel, reportedModel, su
 
 	config.ConfigInstance.RwMutx.RLock()
 	proxy := config.ConfigInstance.Proxy
+	globalForceIPFamily := config.NormalizeGlobalIPFamily(config.ConfigInstance.ForceIPFamily)
 	config.ConfigInstance.RwMutx.RUnlock()
-	config.ConfigInstance.RwMutx.RLock()
-	forceIPFamily := config.ConfigInstance.ForceIPFamily
-	config.ConfigInstance.RwMutx.RUnlock()
-	client := core.NewClient(s.SessionKey, proxy, askedModel, forceIPFamily)
+	effectiveForceIPFamily := config.EffectiveIPFamily(s.ForceIPFamily, globalForceIPFamily)
+	client := core.NewClient(s.SessionKey, proxy, askedModel, effectiveForceIPFamily)
 
 	orgID := strings.TrimSpace(s.OrgID)
 	if orgID == "" {

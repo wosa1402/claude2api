@@ -24,6 +24,8 @@ type SessionInfo struct {
 	Enabled bool   `yaml:"enabled"`
 	// session 池：low=低权重（主要用于 Claude 4），high=正常权重（用于 4.5/haiku）
 	Pool string `yaml:"pool"`
+	// 按账号指定出口协议族：空=继承全局，auto=独立自动，ipv4/ipv6=强制协议族
+	ForceIPFamily string `yaml:"forceIPFamily"`
 	// 自动分类记录（用于手动审核）
 	ClassifyLastAt        string `yaml:"classifyLastAt"`
 	ClassifyAskedModel    string `yaml:"classifyAskedModel"`
@@ -47,7 +49,7 @@ type Config struct {
 	// 出口协议族控制：auto / ipv4 / ipv6
 	ForceIPFamily string `yaml:"forceIPFamily"`
 	// 是否记录每次请求的出口 IP（用于调试，会增加延迟）
-	RecordEgressIP bool `yaml:"recordEgressIP"`
+	RecordEgressIP         bool         `yaml:"recordEgressIP"`
 	Proxy                  string       `yaml:"proxy"`
 	ChatDelete             bool         `yaml:"chatDelete"`
 	MaxChatHistoryLength   int          `yaml:"maxChatHistoryLength"`
@@ -259,6 +261,11 @@ func normalizeSessionDefaults(c *Config) {
 	for i := range c.Sessions {
 		if strings.TrimSpace(c.Sessions[i].Pool) == "" {
 			c.Sessions[i].Pool = "low"
+		}
+		if v, ok := NormalizeSessionIPFamily(c.Sessions[i].ForceIPFamily); ok {
+			c.Sessions[i].ForceIPFamily = v
+		} else {
+			c.Sessions[i].ForceIPFamily = ""
 		}
 		// 兼容旧配置：enabled 未填时默认启用（仅当 sessionKey 存在且 enabled 仍为 false）
 		// 注意：如果用户明确在 YAML 里写 enabled: false，这里不会区分；因此不在这里强制改写 enabled。

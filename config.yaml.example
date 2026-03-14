@@ -7,8 +7,12 @@
 sessions:
   - sessionKey: "your_session_key_1"
     orgID: "your_org_id_1"
+    pool: "low"
+    forceIPFamily: "ipv4"
   - sessionKey: "your_session_key_2"
     orgID: "your_org_id_2"
+    pool: "high"
+    forceIPFamily: ""
 
 # Server address (default: "0.0.0.0:8080")
 address: "0.0.0.0:8080"
@@ -18,6 +22,9 @@ apiKey: "your_api_key"
 
 # Proxy address (optional)
 proxy: ""
+
+# Global IP family policy: auto / ipv4 / ipv6
+forceIPFamily: "auto"
 
 # Chat deletion setting (default: true)
 chatDelete: true

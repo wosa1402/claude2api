@@ -26,6 +26,7 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/admin/sessions", service.AdminAddSessionHandler)
 	r.DELETE("/admin/sessions/:id", service.AdminDeleteSessionHandler)
 	r.POST("/admin/sessions/:id/pool", service.AdminSetSessionPoolHandler)
+	r.POST("/admin/sessions/:id/ip-family", service.AdminSetSessionIPFamilyHandler)
 	r.POST("/admin/sessions/:id/toggle", service.AdminToggleSessionHandler)
 	r.POST("/admin/sessions/:id/auto-classify", service.AdminAutoClassifySessionHandler)
 
