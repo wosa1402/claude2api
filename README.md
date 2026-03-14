@@ -102,6 +102,20 @@ go build -o claude2api .
 ./claude2api
 ```
 
+### GitHub Actions Binary Build
+
+The repository includes two workflows for binary delivery:
+
+- `.github/workflows/build-binaries.yml`: builds packaged binaries on pushes to `main`, pull requests targeting `main`, and manual dispatches. It also uploads a checksum artifact for the current build.
+- `.github/workflows/release.yml`: builds packaged binaries, generates a versioned checksum file, and publishes them to GitHub Releases when a `v*` tag is pushed.
+
+For a release build, create and push a version tag:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
 ## ⚙️ Configuration
 
 ### YAML Configuration

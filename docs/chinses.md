@@ -90,6 +90,20 @@ go build -o claude2api .
 
 ./claude2api
 ```
+
+### GitHub Actions 自动构建二进制
+
+仓库内置了两套与二进制相关的工作流：
+
+- `.github/workflows/build-binaries.yml`：当代码推送到 `main`、向 `main` 发起 PR，或手动触发工作流时，自动构建多平台二进制压缩包，并额外上传当前构建对应的校验文件 artifact。
+- `.github/workflows/release.yml`：当推送 `v*` 版本标签时，自动构建多平台二进制压缩包，生成带版本号的校验文件，并发布到 GitHub Release。
+
+如果你要触发正式版本发布，可以执行：
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
  
  ## ⚙️ 配置
  

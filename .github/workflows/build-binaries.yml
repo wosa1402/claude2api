@@ -1,9 +1,13 @@
-name: Publish Release
+name: Build Binaries
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "main"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,8 +16,8 @@ env:
   APP_NAME: claude2api
 
 concurrency:
-  group: publish-release-${{ github.ref }}
-  cancel-in-progress: false
+  group: build-binaries-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -33,7 +37,7 @@ jobs:
         run: go test ./...
 
   build:
-    name: Release ${{ matrix.goos }}-${{ matrix.goarch }}
+    name: Build ${{ matrix.goos }}-${{ matrix.goarch }}
     needs: test
     runs-on: ubuntu-latest
     strategy:
@@ -68,50 +72,55 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: 构建发布包
+      - name: 构建二进制包
+        env:
+          RAW_REF_NAME: ${{ github.head_ref || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
 
-          VERSION="${GITHUB_REF_NAME}"
+          REF_NAME="${RAW_REF_NAME//\//-}"
+          VERSION="${REF_NAME}-${GITHUB_SHA::7}"
           ./scripts/package-binary.sh "${APP_NAME}" "${VERSION}" "${{ matrix.goos }}" "${{ matrix.goarch }}" "${{ matrix.archive_ext }}"
 
-      - name: 上传发布产物
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: release_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: dist/${{ env.APP_NAME }}_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}/${{ env.APP_NAME }}_${{ github.ref_name }}_${{ matrix.goos }}_${{ matrix.goarch }}.*
+          name: binary_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/${{ env.APP_NAME }}_*_${{ matrix.goos }}_${{ matrix.goarch }}/${{ env.APP_NAME }}_*_${{ matrix.goos }}_${{ matrix.goarch }}.*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
 
-  release:
-    name: Create GitHub Release
+  checksums:
+    name: Collect Checksums
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: 下载发布产物
+      - name: 下载构建产物
         uses: actions/download-artifact@v4
         with:
-          pattern: release_*
+          pattern: binary_*
           path: dist
           merge-multiple: true
 
       - name: 生成校验文件
+        env:
+          RAW_REF_NAME: ${{ github.head_ref || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
 
+          REF_NAME="${RAW_REF_NAME//\//-}"
+          VERSION="${REF_NAME}-${GITHUB_SHA::7}"
+          CHECKSUM_FILE="${APP_NAME}_${VERSION}_checksums.txt"
+
           cd dist
-          CHECKSUM_FILE="${APP_NAME}_${GITHUB_REF_NAME}_checksums.txt"
           find . -maxdepth 1 -type f \( -name "*.zip" -o -name "*.tar.gz" \) -print0 | sort -z | xargs -0 sha256sum > "${CHECKSUM_FILE}"
 
-      - name: 发布到 GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: 上传校验文件
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            dist/*
+          name: binary_checksums
+          path: dist/*.txt
+          if-no-files-found: error
+          retention-days: 14
