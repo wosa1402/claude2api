@@ -29,6 +29,22 @@ NOTICE: ONLY PRO USER CAN USE ALL MODELS , FREE USER CAN USE claude-haiku-4-5-20
 
 ## 🚀 Deployment Options
 
+### One-Click Install
+
+For a single Linux server, the quickest path is the one-click installer. It downloads the latest release binary, generates `config.yaml`, registers a `systemd` service, and starts it immediately.
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/wosa1402/claude2api/main/install.sh)
+```
+
+You can also provide the required values non-interactively:
+
+```bash
+SESSIONS='sk-ant-sid01-xxxx,sk-ant-sid01-yyyy' \
+APIKEY='123' \
+bash <(curl -fsSL https://raw.githubusercontent.com/wosa1402/claude2api/main/install.sh)
+```
+
 ### Docker
 
 ```bash

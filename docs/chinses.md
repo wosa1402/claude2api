@@ -26,6 +26,28 @@ Api支持访问格式为 openai 格式
  - Docker（用于容器化部署）
  
  ## 🚀 部署选项
+
+ ### 一键部署
+
+ 如果你只是自己在一台 Linux 机器上用，最省事的方式就是一键安装脚本。它会自动完成：
+
+ - 下载最新 Release 二进制
+ - 生成 `config.yaml`
+ - 注册 `systemd` 服务
+ - 启动服务
+
+ ```bash
+ bash <(curl -fsSL https://raw.githubusercontent.com/wosa1402/claude2api/main/install.sh)
+ ```
+
+ 也支持直接把必要参数一并传进去，做到无交互部署：
+
+ ```bash
+ SESSIONS='sk-ant-sid01-xxxx,sk-ant-sid01-yyyy' \
+ APIKEY='123' \
+ bash <(curl -fsSL https://raw.githubusercontent.com/wosa1402/claude2api/main/install.sh)
+ ```
+
  ### Docker
  ```bash
  docker run -d \
