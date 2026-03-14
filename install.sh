@@ -149,11 +149,10 @@ prompt_if_empty() {
 }
 
 write_config() {
-  local sessions="$1"
-  local api_key="$2"
-  local address="$3"
-  local proxy="$4"
-  local force_ip_family="$5"
+  local api_key="$1"
+  local address="$2"
+  local proxy="$3"
+  local force_ip_family="$4"
 
   if [ -f "$CONFIG_PATH" ]; then
     read -r -p "检测到已有配置文件，是否保留现有配置? [Y/n]: " keep_config
@@ -168,28 +167,7 @@ write_config() {
   tmp_config="$(mktemp)"
 
   {
-    if [ -n "$(printf '%s' "$sessions" | xargs)" ]; then
-      echo "sessions:"
-      IFS=',' read -r -a session_items <<< "$sessions"
-      for raw_item in "${session_items[@]}"; do
-        local item trimmed key org
-        item="$(printf '%s' "$raw_item" | xargs)"
-        [ -n "$item" ] || continue
-        key="${item%%:*}"
-        org=""
-        if [ "$item" != "$key" ]; then
-          org="${item#*:}"
-        fi
-        trimmed="$(escape_yaml "$key")"
-        org="$(escape_yaml "$org")"
-        echo "  - sessionKey: \"${trimmed}\""
-        echo "    orgID: \"${org}\""
-        echo "    enabled: true"
-        echo "    pool: \"low\""
-      done
-    else
-      echo "sessions: []"
-    fi
+    echo "sessions: []"
     echo ""
     echo "address: \"$(escape_yaml "$address")\""
     echo "apiKey: \"$(escape_yaml "$api_key")\""
@@ -296,8 +274,7 @@ main() {
   TMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
 
-  local sessions api_key address proxy force_ip_family
-  sessions="$(prompt_if_empty "${SESSIONS:-}" "请输入 SESSIONS（可留空，后续可在 /admin 中添加）: ")"
+  local api_key address proxy force_ip_family
   api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY: " true)"
   address="${ADDRESS:-0.0.0.0:8080}"
   proxy="${PROXY:-}"
@@ -310,13 +287,11 @@ main() {
 
   download_release "$tag" "$arch" "$TMP_DIR"
   install_files "$TMP_DIR"
-  write_config "$sessions" "$api_key" "$address" "$proxy" "$force_ip_family"
+  write_config "$api_key" "$address" "$proxy" "$force_ip_family"
   setup_service
   verify_service "$address" "$api_key"
 
-  if [ -z "$(printf '%s' "$sessions" | xargs)" ]; then
-    warn "当前未写入任何账号 Cookie，请先访问 /admin/setup 设置后台密码，再到 /admin 添加账号"
-  fi
+  warn "当前未写入任何账号 Cookie，请先访问 /admin/setup 设置后台密码，再到 /admin 添加账号"
 
   echo ""
   success "部署完成"
