@@ -148,20 +148,32 @@ prompt_if_empty() {
   printf '%s' "$input"
 }
 
+should_keep_existing_config() {
+  if [ ! -f "$CONFIG_PATH" ]; then
+    return 1
+  fi
+
+  local keep_config
+  read -r -p "检测到已有配置文件，是否保留现有配置? [Y/n]: " keep_config
+  keep_config="${keep_config:-Y}"
+  if [[ "$keep_config" =~ ^[Yy]$ ]]; then
+    return 0
+  fi
+  return 1
+}
+
+read_config_api_key() {
+  if [ ! -f "$CONFIG_PATH" ]; then
+    return 1
+  fi
+  sed -n 's/^[[:space:]]*apiKey:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' "$CONFIG_PATH" | head -n 1
+}
+
 write_config() {
   local api_key="$1"
   local address="$2"
   local proxy="$3"
   local force_ip_family="$4"
-
-  if [ -f "$CONFIG_PATH" ]; then
-    read -r -p "检测到已有配置文件，是否保留现有配置? [Y/n]: " keep_config
-    keep_config="${keep_config:-Y}"
-    if [[ "$keep_config" =~ ^[Yy]$ ]]; then
-      info "保留现有配置: ${CONFIG_PATH}"
-      return 0
-    fi
-  fi
 
   local tmp_config
   tmp_config="$(mktemp)"
@@ -274,11 +286,24 @@ main() {
   TMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
 
-  local api_key address proxy force_ip_family
-  api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY: " true)"
+  local api_key address proxy force_ip_family config_kept existing_api_key
+  config_kept="false"
   address="${ADDRESS:-0.0.0.0:8080}"
   proxy="${PROXY:-}"
   force_ip_family="${FORCE_IP_FAMILY:-auto}"
+
+  if should_keep_existing_config; then
+    config_kept="true"
+    info "保留现有配置: ${CONFIG_PATH}"
+    existing_api_key="$(read_config_api_key || true)"
+    if [ -n "$existing_api_key" ]; then
+      api_key="$existing_api_key"
+    else
+      api_key="$(prompt_if_empty "${APIKEY:-}" "未能从现有配置中读取 APIKEY，请重新输入 APIKEY: " true)"
+    fi
+  else
+    api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY: " true)"
+  fi
 
   if [ -z "$api_key" ]; then
     error "APIKEY 不能为空"
@@ -287,11 +312,15 @@ main() {
 
   download_release "$tag" "$arch" "$TMP_DIR"
   install_files "$TMP_DIR"
-  write_config "$api_key" "$address" "$proxy" "$force_ip_family"
+  if [ "$config_kept" != "true" ]; then
+    write_config "$api_key" "$address" "$proxy" "$force_ip_family"
+  fi
   setup_service
   verify_service "$address" "$api_key"
 
-  warn "当前未写入任何账号 Cookie，请先访问 /admin/setup 设置后台密码，再到 /admin 添加账号"
+  if [ "$config_kept" != "true" ]; then
+    warn "当前未写入任何账号 Cookie，请先访问 /admin/setup 设置后台密码，再到 /admin 添加账号"
+  fi
 
   echo ""
   success "部署完成"
