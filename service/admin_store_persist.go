@@ -103,18 +103,18 @@ func hashSessionKey(sessionKey string) string {
 
 func defaultPersistDir() string {
 	// 优先：已有 config.yaml 所在目录（与配置落盘位置一致）
-	execDir := filepath.Dir(os.Args[0])
-	if execDir != "" && execDir != "." {
-		if _, err := os.Stat(filepath.Join(execDir, "config.yaml")); err == nil {
-			return execDir
-		}
-	}
 	if wd, err := os.Getwd(); err == nil && wd != "" {
 		if _, err := os.Stat(filepath.Join(wd, "config.yaml")); err == nil {
 			return wd
 		}
 		// 默认优先工作目录，避免 go run 时写到临时目录
 		return wd
+	}
+	execDir := filepath.Dir(os.Args[0])
+	if execDir != "" && execDir != "." {
+		if _, err := os.Stat(filepath.Join(execDir, "config.yaml")); err == nil {
+			return execDir
+		}
 	}
 	if execDir != "" && execDir != "." {
 		return execDir

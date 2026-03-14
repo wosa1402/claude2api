@@ -14,19 +14,20 @@ func getPersistPath() (string, error) {
 		return p, nil
 	}
 
-	// 优先使用可执行文件所在目录
+	// 默认优先工作目录，避免 systemd 二进制部署时写回到 /usr/local/bin
+	wd, err := os.Getwd()
+	if err == nil && wd != "" {
+		return filepath.Join(wd, "config.yaml"), nil
+	}
+
+	// 其次使用可执行文件所在目录
 	execDir := filepath.Dir(os.Args[0])
 	if execDir != "" && execDir != "." {
 		return filepath.Join(execDir, "config.yaml"), nil
 	}
 
-	// 其次尝试获取工作目录
-	wd, err := os.Getwd()
-	if err != nil {
-		// 如果工作目录也获取失败，使用当前目录
-		return "config.yaml", nil
-	}
-	return filepath.Join(wd, "config.yaml"), nil
+	// 最后退回当前目录
+	return "config.yaml", nil
 }
 
 func PersistConfig() (string, error) {

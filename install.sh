@@ -11,6 +11,7 @@ BINARY_PATH="${INSTALL_DIR}/${APP_NAME}"
 CONFIG_PATH="${CONFIG_DIR}/config.yaml"
 EXAMPLE_CONFIG_PATH="${CONFIG_DIR}/config.yaml.example"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+LEGACY_CONFIG_PATH="${INSTALL_DIR}/config.yaml"
 TMP_DIR=""
 
 RED='\033[0;31m'
@@ -248,6 +249,16 @@ install_files() {
   fi
 }
 
+cleanup_legacy_config() {
+  if [ "$LEGACY_CONFIG_PATH" = "$CONFIG_PATH" ]; then
+    return 0
+  fi
+  if [ -f "$LEGACY_CONFIG_PATH" ]; then
+    as_root rm -f "$LEGACY_CONFIG_PATH"
+    warn "已移除历史遗留配置: ${LEGACY_CONFIG_PATH}"
+  fi
+}
+
 setup_service() {
   if ! command_exists systemctl; then
     error "未检测到 systemd，当前脚本暂时只支持 systemd Linux"
@@ -354,6 +365,7 @@ main() {
 
   download_release "$tag" "$arch" "$TMP_DIR"
   install_files "$TMP_DIR"
+  cleanup_legacy_config
   if [ "$config_kept" != "true" ]; then
     write_config "$api_key" "$address" "$proxy" "$force_ip_family"
   fi

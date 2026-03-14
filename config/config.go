@@ -140,16 +140,16 @@ func configFileExists() (bool, string) {
 	}
 
 	var err error
-	exeConfigPath := filepath.Join(execDir, "config.yaml")
-	_, err = os.Stat(exeConfigPath)
-	if !os.IsNotExist(err) {
-		return true, exeConfigPath
-	}
-
 	workConfigPath := filepath.Join(workDir, "config.yaml")
 	_, err = os.Stat(workConfigPath)
 	if !os.IsNotExist(err) {
 		return true, workConfigPath
+	}
+
+	exeConfigPath := filepath.Join(execDir, "config.yaml")
+	_, err = os.Stat(exeConfigPath)
+	if !os.IsNotExist(err) {
+		return true, exeConfigPath
 	}
 
 	return false, ""
