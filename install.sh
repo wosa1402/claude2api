@@ -11,6 +11,7 @@ BINARY_PATH="${INSTALL_DIR}/${APP_NAME}"
 CONFIG_PATH="${CONFIG_DIR}/config.yaml"
 EXAMPLE_CONFIG_PATH="${CONFIG_DIR}/config.yaml.example"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
+TMP_DIR=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,6 +37,12 @@ error() {
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
+}
+
+cleanup() {
+  if [ -n "${TMP_DIR:-}" ] && [ -d "$TMP_DIR" ]; then
+    rm -rf "$TMP_DIR"
+  fi
 }
 
 as_root() {
@@ -92,6 +99,15 @@ fetch_latest_tag() {
   local response
   response="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")"
   printf '%s\n' "$response" | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+}
+
+extract_port() {
+  local address="$1"
+  if [[ "$address" =~ :([0-9]+)$ ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  return 1
 }
 
 download_release() {
@@ -152,24 +168,28 @@ write_config() {
   tmp_config="$(mktemp)"
 
   {
-    echo "sessions:"
-    IFS=',' read -r -a session_items <<< "$sessions"
-    for raw_item in "${session_items[@]}"; do
-      local item trimmed key org
-      item="$(printf '%s' "$raw_item" | xargs)"
-      [ -n "$item" ] || continue
-      key="${item%%:*}"
-      org=""
-      if [ "$item" != "$key" ]; then
-        org="${item#*:}"
-      fi
-      trimmed="$(escape_yaml "$key")"
-      org="$(escape_yaml "$org")"
-      echo "  - sessionKey: \"${trimmed}\""
-      echo "    orgID: \"${org}\""
-      echo "    enabled: true"
-      echo "    pool: \"low\""
-    done
+    if [ -n "$(printf '%s' "$sessions" | xargs)" ]; then
+      echo "sessions:"
+      IFS=',' read -r -a session_items <<< "$sessions"
+      for raw_item in "${session_items[@]}"; do
+        local item trimmed key org
+        item="$(printf '%s' "$raw_item" | xargs)"
+        [ -n "$item" ] || continue
+        key="${item%%:*}"
+        org=""
+        if [ "$item" != "$key" ]; then
+          org="${item#*:}"
+        fi
+        trimmed="$(escape_yaml "$key")"
+        org="$(escape_yaml "$org")"
+        echo "  - sessionKey: \"${trimmed}\""
+        echo "    orgID: \"${org}\""
+        echo "    enabled: true"
+        echo "    pool: \"low\""
+      done
+    else
+      echo "sessions: []"
+    fi
     echo ""
     echo "address: \"$(escape_yaml "$address")\""
     echo "apiKey: \"$(escape_yaml "$api_key")\""
@@ -232,6 +252,30 @@ EOF
   success "systemd 服务已启动: ${SERVICE_NAME}"
 }
 
+verify_service() {
+  local address="$1"
+  local api_key="$2"
+
+  if ! as_root systemctl is-active --quiet "$SERVICE_NAME"; then
+    error "systemd 服务未处于运行状态，请执行 systemctl status ${SERVICE_NAME} 查看详情"
+    exit 1
+  fi
+
+  local port
+  port="$(extract_port "$address" || true)"
+  if [ -z "$port" ]; then
+    warn "未能从 address=${address} 中提取端口，跳过本地 HTTP 健康检查"
+    return 0
+  fi
+
+  if curl -fsS --max-time 5 -H "Authorization: Bearer ${api_key}" "http://127.0.0.1:${port}/health" >/dev/null; then
+    success "本地健康检查通过: http://127.0.0.1:${port}/health"
+    return 0
+  fi
+
+  warn "服务已启动，但本地健康检查未通过，请执行 journalctl -u ${SERVICE_NAME} -f 查看日志"
+}
+
 main() {
   if [ "$(uname -s)" != "Linux" ]; then
     error "一键部署脚本目前仅支持 Linux"
@@ -241,7 +285,7 @@ main() {
   install_pkg_if_missing curl
   install_pkg_if_missing tar
 
-  local arch tag tmp_dir
+  local arch tag
   arch="$(detect_arch)"
   tag="${INSTALL_TAG:-$(fetch_latest_tag)}"
   if [ -z "$tag" ]; then
@@ -249,32 +293,39 @@ main() {
     exit 1
   fi
 
-  tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
+  TMP_DIR="$(mktemp -d)"
+  trap cleanup EXIT
 
   local sessions api_key address proxy force_ip_family
-  sessions="$(prompt_if_empty "${SESSIONS:-}" "请输入 SESSIONS（多个账号用逗号分隔）: ")"
+  sessions="$(prompt_if_empty "${SESSIONS:-}" "请输入 SESSIONS（可留空，后续可在 /admin 中添加）: ")"
   api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY: " true)"
   address="${ADDRESS:-0.0.0.0:8080}"
   proxy="${PROXY:-}"
   force_ip_family="${FORCE_IP_FAMILY:-auto}"
 
-  if [ -z "$sessions" ] || [ -z "$api_key" ]; then
-    error "SESSIONS 和 APIKEY 不能为空"
+  if [ -z "$api_key" ]; then
+    error "APIKEY 不能为空"
     exit 1
   fi
 
-  download_release "$tag" "$arch" "$tmp_dir"
-  install_files "$tmp_dir"
+  download_release "$tag" "$arch" "$TMP_DIR"
+  install_files "$TMP_DIR"
   write_config "$sessions" "$api_key" "$address" "$proxy" "$force_ip_family"
   setup_service
+  verify_service "$address" "$api_key"
+
+  if [ -z "$(printf '%s' "$sessions" | xargs)" ]; then
+    warn "当前未写入任何账号 Cookie，请先访问 /admin/setup 设置后台密码，再到 /admin 添加账号"
+  fi
 
   echo ""
   success "部署完成"
   info "当前版本: ${tag}"
   info "服务状态: systemctl status ${SERVICE_NAME}"
   info "服务日志: journalctl -u ${SERVICE_NAME} -f"
-  info "访问地址: http://${address}"
+  info "管理后台: http://<服务器IP>:$(extract_port "$address" || printf '8080')/admin"
+  info "健康检查: curl -H 'Authorization: Bearer <APIKEY>' http://127.0.0.1:$(extract_port "$address" || printf '8080')/health"
+  info "模型列表: curl -H 'Authorization: Bearer <APIKEY>' http://127.0.0.1:$(extract_port "$address" || printf '8080')/v1/models"
 }
 
 main "$@"
