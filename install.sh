@@ -169,6 +169,31 @@ read_config_api_key() {
   sed -n 's/^[[:space:]]*apiKey:[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}[[:space:]]*$/\1/p' "$CONFIG_PATH" | head -n 1
 }
 
+upsert_config_api_key() {
+  local api_key="$1"
+  local escaped_key tmp_config
+  escaped_key="$(escape_yaml "$api_key")"
+  tmp_config="$(mktemp)"
+
+  awk -v new_line="apiKey: \"${escaped_key}\"" '
+    BEGIN { replaced = 0 }
+    /^[[:space:]]*apiKey:[[:space:]]*/ && replaced == 0 {
+      print new_line
+      replaced = 1
+      next
+    }
+    { print }
+    END {
+      if (replaced == 0) {
+        print new_line
+      }
+    }
+  ' "$CONFIG_PATH" >"$tmp_config"
+
+  as_root install -m 0644 "$tmp_config" "$CONFIG_PATH"
+  rm -f "$tmp_config"
+}
+
 write_config() {
   local api_key="$1"
   local address="$2"
@@ -299,10 +324,13 @@ main() {
     if [ -n "$existing_api_key" ]; then
       api_key="$existing_api_key"
     else
-      api_key="$(prompt_if_empty "${APIKEY:-}" "未能从现有配置中读取 APIKEY，请重新输入 APIKEY: " true)"
+      warn "现有配置中的 APIKEY 为空或格式异常，将修正这一项"
+      api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY（输入时不回显）: " true)"
+      upsert_config_api_key "$api_key"
+      success "已修正现有配置中的 APIKEY: ${CONFIG_PATH}"
     fi
   else
-    api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY: " true)"
+    api_key="$(prompt_if_empty "${APIKEY:-}" "请输入 APIKEY（输入时不回显）: " true)"
   fi
 
   if [ -z "$api_key" ]; then
