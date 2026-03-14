@@ -139,12 +139,26 @@ prompt_if_empty() {
   fi
 
   local input=""
-  if [ "$secret" = "true" ]; then
-    read -r -s -p "$prompt" input
-    echo ""
-  else
-    read -r -p "$prompt" input
+  local input_fd=""
+  if [ -r /dev/tty ]; then
+    input_fd="/dev/tty"
   fi
+  if [ "$secret" = "true" ]; then
+    if [ -n "$input_fd" ]; then
+      read -r -s -p "$prompt" input <"$input_fd"
+      printf '\n' >"$input_fd"
+    else
+      read -r -s -p "$prompt" input
+      echo ""
+    fi
+  else
+    if [ -n "$input_fd" ]; then
+      read -r -p "$prompt" input <"$input_fd"
+    else
+      read -r -p "$prompt" input
+    fi
+  fi
+  input="${input//$'\r'/}"
   printf '%s' "$input"
 }
 
