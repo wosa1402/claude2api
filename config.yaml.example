@@ -44,3 +44,9 @@ promptDisableArtifacts: false
 # Mirror API settings
 enableMirrorApi: false
 mirrorApiPrefix: ""
+
+# OpenList WebDAV settings (optional)
+openListWebDAVURL: ""
+openListUsername: ""
+openListPassword: ""
+openListDirectory: "/claude2api"

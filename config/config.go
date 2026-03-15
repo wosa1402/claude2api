@@ -58,6 +58,10 @@ type Config struct {
 	PromptDisableArtifacts bool         `yaml:"promptDisableArtifacts"`
 	EnableMirrorApi        bool         `yaml:"enableMirrorApi"`
 	MirrorApiPrefix        string       `yaml:"mirrorApiPrefix"`
+	OpenListWebDAVURL      string       `yaml:"openListWebDAVURL"`
+	OpenListUsername       string       `yaml:"openListUsername"`
+	OpenListPassword       string       `yaml:"openListPassword"`
+	OpenListDirectory      string       `yaml:"openListDirectory"`
 	RwMutx                 sync.RWMutex `yaml:"-"` // 不从YAML加载
 }
 
@@ -216,6 +220,11 @@ func loadConfigFromEnv() *Config {
 		EnableMirrorApi: os.Getenv("ENABLE_MIRROR_API") == "true",
 		// 设置镜像API前缀
 		MirrorApiPrefix: os.Getenv("MIRROR_API_PREFIX"),
+		// 设置 OpenList WebDAV
+		OpenListWebDAVURL: os.Getenv("OPENLIST_WEBDAV_URL"),
+		OpenListUsername:  os.Getenv("OPENLIST_USERNAME"),
+		OpenListPassword:  os.Getenv("OPENLIST_PASSWORD"),
+		OpenListDirectory: os.Getenv("OPENLIST_DIRECTORY"),
 		// 设置读写锁
 		RwMutx: sync.RWMutex{},
 	}
@@ -257,6 +266,12 @@ func normalizeSessionDefaults(c *Config) {
 	defer c.RwMutx.Unlock()
 	if strings.TrimSpace(c.ForceIPFamily) == "" {
 		c.ForceIPFamily = "auto"
+	}
+	c.OpenListWebDAVURL = strings.TrimSpace(c.OpenListWebDAVURL)
+	c.OpenListUsername = strings.TrimSpace(c.OpenListUsername)
+	c.OpenListPassword = strings.TrimSpace(c.OpenListPassword)
+	if c.OpenListWebDAVURL != "" || strings.TrimSpace(c.OpenListDirectory) != "" {
+		c.OpenListDirectory = NormalizeOpenListDirectory(c.OpenListDirectory)
 	}
 	for i := range c.Sessions {
 		if strings.TrimSpace(c.Sessions[i].Pool) == "" {
@@ -315,4 +330,6 @@ func init() {
 	logger.Info(fmt.Sprintf("PromptDisableArtifacts: %t", ConfigInstance.PromptDisableArtifacts))
 	logger.Info(fmt.Sprintf("EnableMirrorApi: %t", ConfigInstance.EnableMirrorApi))
 	logger.Info(fmt.Sprintf("MirrorApiPrefix: %s", ConfigInstance.MirrorApiPrefix))
+	logger.Info(fmt.Sprintf("OpenListEnabled: %t", strings.TrimSpace(ConfigInstance.OpenListWebDAVURL) != ""))
+	logger.Info(fmt.Sprintf("OpenListDirectory: %s", ConfigInstance.OpenListDirectory))
 }

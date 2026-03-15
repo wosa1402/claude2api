@@ -38,6 +38,11 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		if strings.HasPrefix(c.Request.URL.Path, "/v1/files/") {
+			c.Next()
+			return
+		}
+
 		if config.ConfigInstance.EnableMirrorApi && strings.HasPrefix(c.Request.URL.Path, config.ConfigInstance.MirrorApiPrefix) {
 			c.Set("UseMirrorApi", true)
 			c.Next()

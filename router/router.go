@@ -29,9 +29,11 @@ func SetupRoutes(r *gin.Engine) {
 	r.POST("/admin/sessions/:id/ip-family", service.AdminSetSessionIPFamilyHandler)
 	r.POST("/admin/sessions/:id/toggle", service.AdminToggleSessionHandler)
 	r.POST("/admin/sessions/:id/auto-classify", service.AdminAutoClassifySessionHandler)
+	r.POST("/admin/storage/openlist", service.AdminSetOpenListHandler)
 
 	// Health check endpoint
 	r.GET("/health", service.HealthCheckHandler)
+	r.GET("/v1/files/:id", service.GeneratedFileDownloadHandler)
 
 	// Chat completions endpoint (OpenAI-compatible)
 	r.POST("/v1/chat/completions", service.ChatCompletionsHandler)

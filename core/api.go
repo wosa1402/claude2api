@@ -284,7 +284,7 @@ func (c *Client) SendMessage(conversationID string, message string, stream bool,
 	if resp.StatusCode != http.StatusOK {
 		return resp.StatusCode, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-	return 200, c.HandleResponse(resp.Body, stream, gc, hasTools)
+	return 200, c.HandleResponse(resp.Body, conversationID, stream, gc, hasTools)
 }
 
 // SendMessageExtractText 发送消息并从 SSE 中提取纯文本（用于管理后台的低频探测/分类）
@@ -345,7 +345,7 @@ func (c *Client) SendMessageExtractText(conversationID string, message string) (
 }
 
 // HandleResponse converts Claude's SSE format to OpenAI format and writes to the response writer
-func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context, hasTools bool) error {
+func (c *Client) HandleResponse(body io.ReadCloser, conversationID string, stream bool, gc *gin.Context, hasTools bool) error {
 	defer body.Close()
 	completionID := model.NewCompletionID()
 	// Set headers for streaming
@@ -365,6 +365,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 	partial_json_shown := false
 	useTool := false
 	useToolEnd := false
+	shouldExportFiles := false
 	nextLanguage := false
 	languageStr := "md"
 
@@ -399,9 +400,11 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 			}
 			if event.ContentBlock.Type == "tool_use" {
 				useTool = true
+				shouldExportFiles = true
 			}
 			if event.ContentBlock.Type == "tool_result" {
 				useToolEnd = true
+				shouldExportFiles = true
 			}
 			if event.Type == "content_block_stop" {
 				res_text := ""
@@ -570,6 +573,17 @@ func (c *Client) HandleResponse(body io.ReadCloser, stream bool, gc *gin.Context
 	}
 
 	toolCallsFound := hasTools && toolParser != nil && toolParser.HasToolCalls()
+	if shouldExportFiles && conversationID != "" {
+		files, err := c.ExportConversationFiles(conversationID, gc)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to export conversation files: %v", err))
+		} else if filesText := formatConversationFilesText(files); filesText != "" {
+			res_all_text += filesText
+			if stream {
+				model.ReturnOpenAIResponse(filesText, stream, gc, completionID)
+			}
+		}
+	}
 
 	if !stream {
 		if toolCallsFound {
