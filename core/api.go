@@ -373,6 +373,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, conversationID string, strea
 	var toolParser *toolCallParser
 	toolCallIndex := 0
 	var allToolCalls []model.ToolCall
+	var toolContentBuf strings.Builder
 	if hasTools {
 		toolParser = newToolCallParser()
 	}
@@ -499,11 +500,13 @@ func (c *Client) HandleResponse(body io.ReadCloser, conversationID string, strea
 				//使用工具
 				if useTool {
 					logger.Info(fmt.Sprintf("useTool res_text:%s", res_text))
+					toolContentBuf.WriteString(res_text)
 					continue
 				}
 				//使用了工具结束拉
 				if useToolEnd {
 					useToolEnd = false
+					toolContentBuf.WriteString(res_text)
 					continue
 				}
 				//存在代码首字母为"的情况,特殊处理
@@ -574,7 +577,7 @@ func (c *Client) HandleResponse(body io.ReadCloser, conversationID string, strea
 
 	toolCallsFound := hasTools && toolParser != nil && toolParser.HasToolCalls()
 	if shouldExportFiles && conversationID != "" {
-		files, err := c.ExportConversationFiles(conversationID, gc)
+		files, err := c.ExportConversationFiles(conversationID, gc, toolContentBuf.String())
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to export conversation files: %v", err))
 		} else if filesText := formatConversationFilesText(files); filesText != "" {

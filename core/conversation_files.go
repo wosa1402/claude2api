@@ -9,6 +9,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,14 +24,20 @@ type conversationFileRef struct {
 
 var errNoConversationFiles = errors.New("no conversation files found")
 
-func (c *Client) ExportConversationFiles(conversationID string, gc *gin.Context) ([]genfile.PublicFile, error) {
-	refs, err := c.listConversationFiles(conversationID)
-	if err != nil {
-		if errors.Is(err, errNoConversationFiles) {
-			return nil, nil
+func (c *Client) ExportConversationFiles(conversationID string, gc *gin.Context, toolContent string) ([]genfile.PublicFile, error) {
+	refs := extractFileRefsFromToolContent(toolContent)
+
+	if len(refs) == 0 {
+		var err error
+		refs, err = c.listConversationFiles(conversationID)
+		if err != nil {
+			if errors.Is(err, errNoConversationFiles) {
+				return nil, nil
+			}
+			return nil, err
 		}
-		return nil, err
 	}
+
 	if len(refs) == 0 {
 		return nil, nil
 	}
@@ -237,6 +244,46 @@ func extractConversationFileRefs(message map[string]interface{}) []conversationF
 				Name: path.Base(filePath),
 			})
 		}
+	}
+
+	return refs
+}
+
+var localResourceRe = regexp.MustCompile(`\{[^{}]*"type"\s*:\s*"local_resource"[^{}]*\}`)
+
+func extractFileRefsFromToolContent(content string) []conversationFileRef {
+	matches := localResourceRe.FindAllString(content, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	var refs []conversationFileRef
+	seen := make(map[string]struct{})
+
+	for _, match := range matches {
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(match), &obj); err != nil {
+			continue
+		}
+		filePath := asString(obj["file_path"])
+		if filePath == "" {
+			continue
+		}
+		if _, ok := seen[filePath]; ok {
+			continue
+		}
+		seen[filePath] = struct{}{}
+
+		name := asString(obj["name"])
+		if name == "" {
+			name = path.Base(filePath)
+		}
+
+		refs = append(refs, conversationFileRef{
+			Path:     filePath,
+			Name:     name,
+			MimeType: asString(obj["mime_type"]),
+		})
 	}
 
 	return refs
