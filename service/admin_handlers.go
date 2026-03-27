@@ -22,8 +22,13 @@ type adminStatusResp struct {
 		EgressIPv6     string  `json:"egressIPv6"`
 		EgressAt       string  `json:"egressAt"`
 		EgressError    string  `json:"egressError"`
-		ForceIPFamily  string  `json:"forceIPFamily"`
-		RecordEgressIP bool    `json:"recordEgressIP"`
+		ForceIPFamily      string  `json:"forceIPFamily"`
+		RecordEgressIP     bool    `json:"recordEgressIP"`
+		OpenListEnabled    bool    `json:"openListEnabled"`
+		OpenListWebDAVURL  string  `json:"openListWebDAVURL"`
+		OpenListUsername   string  `json:"openListUsername"`
+		OpenListPasswordSet bool   `json:"openListPasswordSet"`
+		OpenListDirectory  string  `json:"openListDirectory"`
 	} `json:"global"`
 	Accounts []adminAccountResp `json:"accounts"`
 }
@@ -88,6 +93,11 @@ func AdminStatusHandler(c *gin.Context) {
 	config.ConfigInstance.RwMutx.RLock()
 	resp.Global.ForceIPFamily = config.NormalizeGlobalIPFamily(config.ConfigInstance.ForceIPFamily)
 	resp.Global.RecordEgressIP = config.ConfigInstance.RecordEgressIP
+	resp.Global.OpenListWebDAVURL = strings.TrimSpace(config.ConfigInstance.OpenListWebDAVURL)
+	resp.Global.OpenListUsername = strings.TrimSpace(config.ConfigInstance.OpenListUsername)
+	resp.Global.OpenListPasswordSet = strings.TrimSpace(config.ConfigInstance.OpenListPassword) != ""
+	resp.Global.OpenListDirectory = config.ConfigInstance.OpenListDirectory
+	resp.Global.OpenListEnabled = resp.Global.OpenListWebDAVURL != ""
 	config.ConfigInstance.RwMutx.RUnlock()
 
 	config.ConfigInstance.RwMutx.RLock()

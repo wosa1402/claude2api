@@ -562,6 +562,43 @@
         </section>
 
         <section class="card">
+          <h2>文件存储（WebDAV）</h2>
+          <div class="content">
+            <div class="hint" id="storageStatus" style="margin-bottom:10px">WebDAV：--</div>
+            <div style="display:grid; gap:10px; max-width:560px">
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+                <div class="hint" style="margin:0; min-width:80px">WebDAV URL</div>
+                <input id="olUrl" placeholder="例如：https://example.com/dav"
+                  style="flex:1; min-width:200px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--text); outline:none">
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+                <div class="hint" style="margin:0; min-width:80px">用户名</div>
+                <input id="olUser" placeholder="可选"
+                  style="flex:1; min-width:200px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--text); outline:none">
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+                <div class="hint" style="margin:0; min-width:80px">密码</div>
+                <input id="olPass" type="password" placeholder="留空保持不变"
+                  style="flex:1; min-width:200px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--text); outline:none">
+                <label style="display:flex; align-items:center; gap:4px; cursor:pointer">
+                  <input type="checkbox" id="olClearPass" style="width:14px; height:14px">
+                  <span class="hint" style="margin:0; white-space:nowrap">清除密码</span>
+                </label>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+                <div class="hint" style="margin:0; min-width:80px">存储目录</div>
+                <input id="olDir" placeholder="/claude2api"
+                  style="flex:1; min-width:200px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:rgba(255,255,255,0.06); color:var(--text); outline:none">
+              </div>
+              <div style="display:flex; gap:10px; margin-top:4px">
+                <button class="btn sm ghost" id="btnSaveStorage" type="button">保存</button>
+                <div class="hint" style="margin:0; align-self:center">不填 URL 则文件存储在本地临时目录</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
           <h2>账号列表</h2>
           <div class="content">
             <div class="accounts" id="accounts"></div>
@@ -745,6 +782,16 @@
         $("ipFamilyHint").textContent = fam === "auto" ? "当前：自动" : ("当前：" + fam.toUpperCase());
 
         $("recordEgressIPChk").checked = !!g.recordEgressIP;
+
+        // Storage
+        $("olUrl").value = g.openListWebDAVURL || "";
+        $("olUser").value = g.openListUsername || "";
+        $("olPass").value = "";
+        $("olClearPass").checked = false;
+        $("olDir").value = g.openListDirectory || "/claude2api";
+        $("storageStatus").textContent = g.openListEnabled
+          ? "WebDAV：已启用" + (g.openListPasswordSet ? "（密码已设置）" : "（未设密码）")
+          : "WebDAV：未配置（文件存储在本地临时目录）";
 
         const wrap = $("accounts");
         wrap.innerHTML = `
@@ -1181,6 +1228,35 @@
           try {
             body = await res.json();
           } catch (_) {}
+          if (!res.ok) throw new Error((body && body.error) ? body.error : "HTTP " + res.status);
+          showToast(body && body.savedPath ? ("已保存到 " + body.savedPath) : "已保存");
+          await loadStatus();
+        } catch (e) {
+          showToast("保存失败：" + e.message);
+        } finally {
+          setLoading(btn, false);
+        }
+      });
+
+      $("btnSaveStorage").addEventListener("click", async () => {
+        const btn = $("btnSaveStorage");
+        setLoading(btn, true, "保存中…");
+        try {
+          const res = await fetch("/admin/storage/openlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              webdavUrl: $("olUrl").value.trim(),
+              username: $("olUser").value.trim(),
+              password: $("olPass").value,
+              directory: $("olDir").value.trim(),
+              clearPassword: $("olClearPass").checked,
+            }),
+          });
+          if (res.status === 401) return (location.href = "/admin/login");
+          if (res.status === 403) return (location.href = "/admin/setup");
+          let body = null;
+          try { body = await res.json(); } catch (_) {}
           if (!res.ok) throw new Error((body && body.error) ? body.error : "HTTP " + res.status);
           showToast(body && body.savedPath ? ("已保存到 " + body.savedPath) : "已保存");
           await loadStatus();
