@@ -288,7 +288,8 @@ EOF
   rm -f "$tmp_service"
 
   as_root systemctl daemon-reload
-  as_root systemctl enable --now "$SERVICE_NAME"
+  as_root systemctl enable "$SERVICE_NAME"
+  as_root systemctl restart "$SERVICE_NAME"
   success "systemd 服务已启动: ${SERVICE_NAME}"
 }
 
