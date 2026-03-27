@@ -500,15 +500,53 @@ EOF
     print_info "重启服务: systemctl restart claude2api"
 }
 
+# 自动查找项目目录
+find_project_dir() {
+    # 当前目录
+    if [ -f "main.go" ] && [ -f "go.mod" ]; then
+        pwd
+        return 0
+    fi
+    # 相对路径 ./claude2api
+    if [ -d "claude2api" ] && [ -f "claude2api/main.go" ]; then
+        (cd claude2api && pwd)
+        return 0
+    fi
+    # 家目录
+    if [ -d "$HOME/claude2api" ] && [ -f "$HOME/claude2api/main.go" ]; then
+        echo "$HOME/claude2api"
+        return 0
+    fi
+    # 从 systemd 服务获取工作目录
+    if command_exists systemctl; then
+        local wd
+        for svc in claude2api c2c; do
+            wd=$(systemctl show "$svc" -p WorkingDirectory 2>/dev/null | cut -d= -f2)
+            if [ -n "$wd" ] && [ -f "$wd/main.go" ]; then
+                echo "$wd"
+                return 0
+            fi
+        done
+    fi
+    return 1
+}
+
 # 更新项目
 update_project() {
     print_info "正在更新 Claude2API..."
     echo ""
 
-    # 检查是否在项目目录
+    # 检查是否在项目目录，不在则尝试自动查找
     if ! check_in_project_dir; then
-        print_error "请在项目目录中运行更新命令"
-        exit 1
+        local project_dir
+        if project_dir=$(find_project_dir); then
+            print_info "找到项目目录: $project_dir"
+            cd "$project_dir"
+        else
+            print_error "找不到项目目录"
+            print_info "请在项目目录中运行，或先使用部署命令安装项目"
+            exit 1
+        fi
     fi
 
     # 检查是否是 git 仓库
